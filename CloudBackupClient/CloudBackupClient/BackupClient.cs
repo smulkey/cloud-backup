@@ -1,37 +1,32 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using CloudBackupClient.Data;
 using CloudBackupClient.Models;
 using CloudBackupClient.Providers;
-using Microsoft.Data.Sqlite;
-using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Console;
+using System.Linq;
+using CloudBackupClient.ClientDBHandlers;
+using CloudBackupClient.ClientFileCacheHandlers;
 
 namespace CloudBackupClient
 {
-    class BackupClient
-    {        
-
-        private IConfigurationRoot appConfig;
+    public class BackupClient
+    {
+                
         private string backupCacheDir;
         private int maxCacheMB;
         private int totalRunTimeSeconds;
-        private DateTime stopRunTime;
-        private CloudBackupArchiveProvider archiveProvider;
-
-        ILogger logger;
-
+        private DateTime stopRunTime;        
+        private IServiceProvider serviceProvider;
 
         static void Main(string[] args)
         {
             try
-            {
-                BackupClient client = new BackupClient();
-                client.Start();
+            {                                                                                
+                (new BackupClient()).Start();
+                
             } catch(Exception ex)
             {                
                 Console.WriteLine("Program fail with exception: {0}", ex.Message);
@@ -41,9 +36,24 @@ namespace CloudBackupClient
 
         private void Start()
         {
+            this.Logger.LogInformation("Initializing BackupClient services...");
+
+            var appConfig = new ConfigurationBuilder()
+                                    .SetBasePath(System.IO.Directory.GetCurrentDirectory())
+                                    .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true).Build();
+
+            this.serviceProvider = new ServiceCollection()
+                                            .AddSingleton<ICloudBackupArchiveProvider, FileSystemBackupArchiveProvider>()
+                                            .AddSingleton<IClientDBHandler, InMemoryDBHandler>()
+                                            .AddSingleton<IConfigurationRoot>(provider => appConfig)
+                                            .AddSingleton<IClientFileCacheHandler, LocalClientFileCacheHandler>()
+                                            .AddLogging(builder => builder.AddConsole())
+                                            .BuildServiceProvider();
+
             this.Logger.LogInformation("Starting backup run at {0}", DateTime.Now.ToString());
 
-            var config = this.AppConfig.GetSection("BackupSettings");
+            var appConfigRoot = this.serviceProvider.GetService<IConfigurationRoot>();
+            var config = appConfigRoot.GetSection("BackupSettings");
 
             if (config == null)
             {
@@ -51,60 +61,47 @@ namespace CloudBackupClient
             }
 
             this.stopRunTime = DateTime.Now.AddSeconds(this.TotalRunTimeSeconds);
-                        
-            var connection = new SqliteConnection(this.AppConfig.GetConnectionString("BackupRunConnStr"));
-
+            
             try
             {
-                connection.Open();
+                BackupRun br = null;
 
-                var options = new DbContextOptionsBuilder<CloudBackupDbContext>()
-                    .UseSqlite(connection)
-                    .Options;
+                try
+                {                     
+                    br = GetOpenBackupRun();
 
-                using (var dbContext = new CloudBackupDbContext(options))
+                    if (br == null)
+                    {
+                        this.Logger.LogInformation("Creating new backup run");
+                        br = CreateBackupRun();
+                    }
+
+                    this.Logger.LogInformation(String.Format("Processing open backup run with ID: {0}", br.BackupRunID));
+
+                    ArchiveCurrentBackupRun(br);
+                }
+                catch (Exception ex)
                 {
-                    BackupRun br = null;
+                    if (br != null)
+                    {
+                        br.BackupRunCompleted = true;
+                        br.BackupRunEnd = DateTime.Now;
+                        br.FailedWithException = true;
+                        br.ExceptionMessage = String.Format("{0}:{1}", ex.Message, ex.StackTrace);
 
                     try
                     {
-                        dbContext.Database.EnsureCreated();
-
-                        br = GetOpenBackupRun(dbContext);
-
-                        if (br == null)
-                        {
-                            this.Logger.LogInformation("Creating new backup run");
-                            br = CreateBackupRun(dbContext);
-                        }
-
-                        this.Logger.LogInformation(String.Format("Processing open backup run with ID: {0}", br.BackupRunID));
-
-                        ArchiveCurrentBackupRun(dbContext, br);
+                        this.ClientDBHandler.UpdateBackupRun(br);
                     }
-                    catch (Exception ex)
+                    catch (Exception dbEx)
                     {
-                        if (br != null)
-                        {
-                            br.BackupRunCompleted = true;
-                            br.BackupRunEnd = DateTime.Now;
-                            br.FailedWithException = true;
-                            br.ExceptionMessage = String.Format("{0}:{1}", ex.Message, ex.StackTrace);
-
-                            try
-                            {
-                                dbContext.SaveChanges();
-                            }
-                            catch (Exception dbEx)
-                            {
-                                this.Logger.LogError(dbEx, "Couldn't save backup run exception: {0}", dbEx.Message);
-                            }
-
-                        }
-
-                        this.Logger.LogError(ex, "Failure in processing backup run: {0}", ex.Message);
+                        this.Logger.LogError(dbEx, "Couldn't save backup run exception: {0}", dbEx.Message);
                     }
+
                 }
+
+                    this.Logger.LogError(ex, "Failure in processing backup run: {0}", ex.Message);
+                }               
             }
             catch(Exception ex)
             {
@@ -112,18 +109,18 @@ namespace CloudBackupClient
             }
             finally
             {
-                connection.Close();
+                this.ClientDBHandler.Dispose();
             }
             
         }
 
-        private void ArchiveCurrentBackupRun(CloudBackupDbContext dbContext, BackupRun br)
+        private void ArchiveCurrentBackupRun(BackupRun br)
         {
             bool haltTimeNotExceeded;
 
             do
             {
-                InitializeBackupRun(dbContext, br);
+                InitializeBackupRun(br);
 
                 foreach (var item in br.BackupFileRefs)
                 {
@@ -131,8 +128,11 @@ namespace CloudBackupClient
                     {
                         try
                         {
-                            FileInfo cacheFile = new FileInfo(GetCacheEntryForFile(item.FullFileName, br));
-                            bool success = this.ArchiveProvider.ArchiveFile(br, item, cacheFile);
+                            var cacheFileStream = this.ClientFileCacheHandler.GetCacheStreamForItem(item, br);
+                            
+                            bool success = this.serviceProvider.GetService<ICloudBackupArchiveProvider>().ArchiveFile(br, item, cacheFileStream);
+
+                            cacheFileStream.Close();
 
                             if (success == false)
                             {
@@ -144,7 +144,7 @@ namespace CloudBackupClient
 
                                 item.CopiedToArchive = true;
 
-                                dbContext.Update<BackupRunFileRef>(item);                                
+                                this.ClientDBHandler.UpdateBackupFileRef(item);                                                               
                             }
                         }
                         catch (Exception ex)
@@ -153,18 +153,21 @@ namespace CloudBackupClient
                             br.BackupRunEnd = DateTime.Now;
                             br.ExceptionMessage = ex.Message;
 
-                            dbContext.Update<BackupRun>(br);
+                            //  dbContext.Update<BackupRun>(br);
+
+                            this.ClientDBHandler.UpdateBackupRun(br);
 
                             throw new Exception(String.Format("Backup run with ID {0} failed with exception: {1}", br.BackupRunID, ex.Message));
                         }
                         finally
                         {
-                            dbContext.SaveChanges();
+
+                            this.ClientDBHandler.UpdateBackupRun(br);                         
                         }
                     }
                 }
 
-                haltTimeNotExceeded = (DateTime.Now.CompareTo(this.StopRunTime) < 0);
+                haltTimeNotExceeded = (DateTime.Now.CompareTo(this.stopRunTime) < 0);
 
                 Logger.LogInformation("Completed cache copy run with BackupRun.Completed = {0} and halt time {1} exceeded", 
                                         br.BackupRunCompleted, 
@@ -175,27 +178,16 @@ namespace CloudBackupClient
 
             foreach (var backupRef in br.BackupFileRefs)
             {
-                string cacheFileName = GetCacheEntryForFile(backupRef.FullFileName, br);
-
-                if (backupRef.CopiedToArchive && File.Exists(cacheFileName))
-                {
-                    Logger.LogDebug("Deleting cache file after archive: {0}", cacheFileName);
-
-                    File.Delete(cacheFileName);
-                }
+                this.ClientFileCacheHandler.CompleteFileArchive(backupRef, br);
             }           
         }
-
-        private string GetCacheEntryForFile(string fullFileName, BackupRun br)
-        {
-            return String.Format("{0}{1}{2}{3}", this.BackupCacheDirectory, br.BackupRunID, Path.DirectorySeparatorChar, fullFileName.Substring(fullFileName.IndexOf(":") + 1));
-        }
-
-        private BackupRun InitializeBackupRun(CloudBackupDbContext dbContext, BackupRun br)
+                
+        private BackupRun InitializeBackupRun(BackupRun br)
         {
             Logger.LogDebug("BackupClient.InitializeNewBackupRun called");
 
-            this.ScanBackupDirectoriesForRun(dbContext, br);            
+            this.ClientFileCacheHandler.PopulateFilesForBackupRun(br);
+            
             long currentBytes;
             string cacheRef;
             int fileCount;
@@ -207,15 +199,8 @@ namespace CloudBackupClient
             //File count tracked separately in case the last run is all directories
             fileCount = 0;
 
-            logger.LogInformation("Copying scanned files to backup cache");
-            string backupCacheFullDir = String.Format("{0}{1}", this.BackupCacheDirectory, br.BackupRunID);
-
-            if (Directory.Exists(backupCacheFullDir) == false)
-            {
-                Logger.LogInformation(String.Format("Creating new backup cache directory at {0}", backupCacheFullDir));
-
-                Directory.CreateDirectory(backupCacheFullDir);
-            }
+            this.Logger.LogInformation("Copying scanned files to backup cache");
+            
 
             foreach (var fileRef in br.BackupFileRefs)
             {
@@ -264,8 +249,9 @@ namespace CloudBackupClient
 
                     fileCount += 1;
 
-                    Logger.LogDebug("Saving dbContext changes");
-                    dbContext.SaveChanges();
+                    Logger.LogDebug("Saving file ref changes");
+
+                    this.ClientDBHandler.UpdateBackupFileRef(fileRef);
                 }
             }
 
@@ -276,18 +262,18 @@ namespace CloudBackupClient
                 br.BackupRunCompleted = true;
                 br.BackupRunEnd = DateTime.Now;
 
-                dbContext.SaveChanges();
+                this.ClientDBHandler.UpdateBackupRun(br);
             }
                             
             return br;
         }
 
-        private BackupRun CreateBackupRun(CloudBackupDbContext dbContext)
+        private BackupRun CreateBackupRun()
         {
             Logger.LogDebug("CreateBackupRun called");
-
-            var config = this.AppConfig.GetSection("BackupSettings");
-
+            var appConfigRoot = this.serviceProvider.GetService<IConfigurationRoot>();
+            var config = appConfigRoot.GetSection("BackupSettings");
+            
             if (config == null)
             {
                 throw new Exception("No config section found for backup settings");
@@ -314,44 +300,19 @@ namespace CloudBackupClient
                 br.BackupDirectories.Add(new BackupDirectoryRef { DirectoryFullFileName = dirList[i] });
             }
 
-            dbContext.Add<BackupRun>(br);
-            dbContext.SaveChanges();
-
+            this.ClientDBHandler.AddBackupRun(br);
+          
             Logger.LogInformation(String.Format("Created new backup run with ID: {0}", br.BackupRunID));
 
             return br;
         }
 
-        private void ScanBackupDirectoriesForRun(CloudBackupDbContext dbContext, BackupRun br)
-        {
-            List<FileInfo> directoryFiles = new List<FileInfo>();
-
-            Logger.LogInformation("Starting directory scan for backup run");
-
-            foreach (var dirRef in br.BackupDirectories)
-            {
-                ScanDirectoryContents(dirRef.DirectoryFullFileName, directoryFiles);
-            }
-
-            foreach (FileInfo info in directoryFiles)
-            {
-                //Make sure file wasn't added in an ealier scan for this run
-                if (br.BackupFileRefs.Where(b => b.FullFileName.ToLower().Equals(info.FullName.ToLower())).Count() == 0)
-                {
-                    Logger.LogInformation(String.Format("Adding file ref {0} to backup run ID {1}", info.FullName, br.BackupRunID));
-                    br.BackupFileRefs.Add(new BackupRunFileRef { FullFileName = info.FullName });
-                }
-                
-            }           
-
-        }
-
-        private BackupRun GetOpenBackupRun(CloudBackupDbContext dbContext)
+        private BackupRun GetOpenBackupRun()
         {
             this.Logger.LogDebug("GetOpenBackupRun called");
 
-            var openBackupRuns = dbContext.BackupRuns.Where<BackupRun>(b => b.BackupRunCompleted == false).ToList<BackupRun>();
-            
+            var openBackupRuns = this.ClientDBHandler.GetOpenBackupRuns();
+
             if(openBackupRuns.Count > 1)
             {
                 throw new Exception("More than one open backup");
@@ -361,47 +322,12 @@ namespace CloudBackupClient
                 return openBackupRuns.Count == 0 ? null : openBackupRuns.First<BackupRun>();
             }            
         }
-
-        private List<FileInfo> ScanDirectoryContents(String rootDir, List<FileInfo> directoryFiles)
-        {
-            if( String.IsNullOrWhiteSpace(rootDir) )
-            {
-                throw new Exception("No root directory provided");
-            } else if( !Directory.Exists(rootDir) )
-            {
-                throw new Exception(String.Format("Root directory {0} doesn't exist", rootDir));
-            }
-                        
-            PopulateFileList(rootDir, directoryFiles);
-
-            return directoryFiles;
-        }
-
-        private void PopulateFileList(string fileName, List<FileInfo> fileList)
-        {
-            if(File.Exists(fileName) || Directory.Exists(fileName))
-            {
-                fileList.Add(new FileInfo(fileName));
-
-                if(Directory.Exists(fileName))
-                {
-                    foreach (string dirFile in Directory.EnumerateFiles(fileName))
-                    {
-                        fileList.Add(new FileInfo(dirFile));
-                    }
-
-                    foreach (string dirFile in Directory.EnumerateDirectories(fileName))
-                    {
-                        PopulateFileList(dirFile, fileList);
-                    }
-                }
-            }
-        }
-
+        
         private string GetBackupSettingsConfigValue(string key)
         {
-            var config = this.AppConfig.GetSection("BackupSettings");
-
+            var appConfigRoot = this.serviceProvider.GetService<IConfigurationRoot>();
+            var config = appConfigRoot.GetSection("BackupSettings");
+            
             if (config == null)
             {
                 throw new Exception("No config section found for backup settings");
@@ -416,165 +342,21 @@ namespace CloudBackupClient
 
             return config.Value;
         }
+        
 
-        private void InitializeDB()
-        {
-            // In-memory database only exists while the connection is open
-            var connection = new SqliteConnection("DataSource=:memory:");
-            connection.Open();
+        private int MaxCacheMB => (this.maxCacheMB == 0)
+                                    ? this.maxCacheMB = Int32.Parse(this.GetBackupSettingsConfigValue("MaxCacheMB"))
+                                    : this.maxCacheMB;                    
 
-            try
-            {
-                var options = new DbContextOptionsBuilder<CloudBackupDbContext>()
-                    .UseSqlite(connection)
-                    .Options;
-
-                // Create the schema in the database
-                using (var context = new CloudBackupDbContext(options))
-                {
-                    context.Database.EnsureCreated();
-                }
-
+        private int TotalRunTimeSeconds => (this.totalRunTimeSeconds == 0)
+                                            ? this.totalRunTimeSeconds = Int32.Parse(this.GetBackupSettingsConfigValue("TotalRunTimeSeconds"))
+                                            : this.totalRunTimeSeconds;        
                 
-            }
-            finally
-            {
-                connection.Close();
-            }
-        }
-    
-        private IConfigurationRoot AppConfig
-        {
-            get {
+        private IClientDBHandler ClientDBHandler => this.serviceProvider.GetService<IClientDBHandler>();
 
-                if (this.appConfig == null)
-                {
-                    var builder = new ConfigurationBuilder()
-                    .SetBasePath(Directory.GetCurrentDirectory())
-                    .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true);
+        private IClientFileCacheHandler ClientFileCacheHandler => this.serviceProvider.GetService<IClientFileCacheHandler>();
 
-                    this.appConfig = builder.Build();
-                }
-
-                return this.appConfig;
-            }
-        }
-
-        private string BackupCacheDirectory
-        {
-            get
-            {
-                if(backupCacheDir == null)
-                {
-                    backupCacheDir = this.GetBackupSettingsConfigValue("TempCopyDirectory");
-                }
-
-                return backupCacheDir;
-            }
-        }
-
-        private int MaxCacheMB
-        {
-            get
-            {
-                if(this.maxCacheMB == 0)
-                {
-                    this.maxCacheMB = Int32.Parse(this.GetBackupSettingsConfigValue("MaxCacheMB"));
-                }
-
-                return this.maxCacheMB;
-            }
-        }
-
-        private int TotalRunTimeSeconds
-        {
-            get
-            {
-                if (this.totalRunTimeSeconds == 0)
-                {
-                    this.totalRunTimeSeconds = Int32.Parse(this.GetBackupSettingsConfigValue("TotalRunTimeSeconds"));
-                }
-
-                return this.totalRunTimeSeconds;
-            }
-        }
-
-        private DateTime StopRunTime
-        {
-            get
-            {               
-                return this.stopRunTime;
-            }
-        }
-
-        private CloudBackupArchiveProvider ArchiveProvider
-        {
-            get
-            {
-                if (this.archiveProvider == null)
-                {
-                    var providerType = this.GetBackupSettingsConfigValue("ArchiveProviderType");
-
-                    if (String.IsNullOrWhiteSpace(providerType))
-                    {
-                        throw new Exception("No archive provider type assigned in configuration");
-                    }
-
-                    var providerSettings = this.GetBackupSettingsConfigValue("ArchiveProviderConfig");
-
-                    if (String.IsNullOrWhiteSpace(providerSettings))
-                    {
-                        throw new Exception("No archive provider settings assigned in configuration");
-                    }
-
-                    var providerConfig = this.AppConfig.GetSection("BackupSettings");
-
-                    if (providerConfig == null)
-                    {
-                        throw new Exception("No provider configuration section found for backup settings");
-                    }
-
-                    if (providerType.ToLower().Equals("filesystem"))
-                    {
-                        this.archiveProvider = new FileSystemBackupArchiveProvider();
-                    }
-                    else
-                    {
-                        throw new Exception(String.Format("No provider found for type: {0}", providerType));
-                    }
-                }
-
-                //TODO: Investigate where DI is happening for the provider and change intialize handling
-                if( this.archiveProvider.Initialized == false )
-                {
-                    this.archiveProvider.Configure(this.AppConfig.GetSection("FileSystemArchiveTestConfig"));
-                }
-
-                return this.archiveProvider;
-            }
-        }
-
-        private ILogger Logger
-        {
-            get
-            {
-                if (this.logger == null)
-                {                  
-
-                    var loggerFactory = LoggerFactory.Create(builder =>
-                    {
-                        builder
-                            .AddFilter("Microsoft", LogLevel.Warning)
-                            .AddFilter("System", LogLevel.Warning)
-                            .AddFilter("CloudBackupClient.BackupClient", LogLevel.Debug)
-                            .AddConsole();
-                    });
-
-                    this.logger = loggerFactory.CreateLogger<BackupClient>();
-                }
-                
-                return this.logger;
-            }
-        }
+        private ILogger Logger => this.serviceProvider.GetService<ILogger<BackupClient>>();          
+        
     }
 }
