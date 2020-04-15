@@ -6,12 +6,12 @@ using System.Text;
 
 namespace CloudBackupClient.ClientFileCacheHandlers
 {
-    interface IClientFileCacheHandler : IDisposable
+    public interface IClientFileCacheHandler : IDisposable
     {
-        void PopulateFilesForBackupRun(BackupRun backupRun);
+        void InitializeBackupRun(BackupRun backupRun);
 
         Stream GetCacheStreamForItem(BackupRunFileRef backupRef, BackupRun backupRun);
         
-        void CompleteFileArchive(BackupRunFileRef backupRef, BackupRun backupRun);
+        void CompleteFileArchive(BackupRunFileRef backupRef, BackupRun backupRun);        
     }
 }

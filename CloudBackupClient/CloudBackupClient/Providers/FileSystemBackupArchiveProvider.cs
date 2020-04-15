@@ -19,24 +19,16 @@ namespace CloudBackupClient.Providers
         {
             this.serviceProvider = serviceProvider;
         }
-
+                
         public bool ArchiveFile(BackupRun backupRun, BackupRunFileRef fileRef, Stream cacheFileStream)
-        {
+        {            
+
             if( false == isInitialized )
             {
                 this.Initialize();
             }
 
             Logger.LogDebug("Called FileSystemBackup.ArchiveFile");
-            
-            //TODO Move direcory check
-            //Don't copy directories            
-            //if (Directory.Exists(cacheFile.FullName))
-            //{
-            //    Logger.LogInformation(String.Format("Skipping archive for directory reference: {0}", fileRef.FullFileName));
-
-            //    return true;
-            //}
                                                            
             FileInfo archiveFile = new FileInfo(String.Format("{0}{1}{2}{3}{4}", 
                                                 this.baseBackupDir, 
@@ -59,15 +51,26 @@ namespace CloudBackupClient.Providers
                 archiveFile.Directory.Create();
             }
 
-            byte[] buffer = new byte[1024];
-            int offset = 0;
-            int count;
-
-            while((count = cacheFileStream.Read(buffer, offset, buffer.Length)) > 0)
+            if (cacheFileStream != null)
             {
-                offset += count;  
-            }
-                                    
+                byte[] buffer = new byte[1024];
+                int offset = 0;
+                int count;
+
+                Logger.LogInformation(String.Format("Creating archive entry for file: {0}", fileRef.FullFileName));
+                archiveFile.Create();
+
+                using (var writeStream = archiveFile.OpenWrite())
+                {
+                    while ((count = cacheFileStream.Read(buffer, offset, buffer.Length)) > 0)
+                    {
+                        writeStream.Write(buffer, 0, count);
+
+                        offset += count;
+                    }
+                }
+            }  
+            
             Logger.LogInformation(String.Format("Completed archive copy for entry: {0} with result: {1}", fileRef.FullFileName, archiveFile.Exists));
 
             return true;

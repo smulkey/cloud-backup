@@ -8,6 +8,8 @@ namespace CloudBackupClient.ClientDBHandlers
 {
     public interface IClientDBHandler : IDisposable
     {
+        public void Initialize(IDictionary<string, string> dbProperties);
+
         IList<BackupRun> GetOpenBackupRuns();
 
         void AddBackupRun(BackupRun br);

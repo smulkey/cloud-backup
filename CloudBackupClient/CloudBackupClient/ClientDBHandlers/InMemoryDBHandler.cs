@@ -74,6 +74,11 @@ namespace CloudBackupClient.ClientDBHandlers
             }            
         }
 
+        public void Initialize(IDictionary<string, string> dbProperties)
+        {
+            throw new NotImplementedException();
+        }
+
         private ILogger Logger => this.serviceProvider.GetService<ILogger<InMemoryDBHandler>>();
     }
 }

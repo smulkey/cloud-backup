@@ -13,46 +13,25 @@ namespace CloudBackupClient.ClientFileCacheHandlers
     class LocalClientFileCacheHandler : IClientFileCacheHandler
     {
         private IServiceProvider serviceProvider;
-
+        
         public LocalClientFileCacheHandler(IServiceProvider serviceProvider)
         {
             this.serviceProvider = serviceProvider;
         }
 
-        public void PopulateFilesForBackupRun(BackupRun br)
+        public void InitializeBackupRun(BackupRun backupRun)
         {
-            List<FileInfo> directoryFiles = new List<FileInfo>();
+            Logger.LogDebug("BackupClient.InitializeNewBackupRun called");
 
-            Logger.LogInformation("Starting directory scan for backup run");
-                        
-            foreach (var dirRef in br.BackupDirectories)
-            {                
-                var rootDir = dirRef.DirectoryFullFileName;
+            long currentBytes;
+            string cacheRef;
+            int fileCount;
 
-                if (String.IsNullOrWhiteSpace(rootDir))
-                {
-                    throw new Exception("No root directory provided");
-                }
-                else if (!Directory.Exists(rootDir))
-                {
-                    throw new Exception(String.Format("Root directory {0} doesn't exist", rootDir));
-                }
+            backupRun.BackupRunStart = DateTime.Now;
 
-                PopulateFileList(rootDir, directoryFiles);
-            }
+            currentBytes = 0;
 
-            foreach (FileInfo info in directoryFiles)
-            {
-                //Make sure file wasn't added in an ealier scan for this run
-                if (br.BackupFileRefs.Where<BackupRunFileRef>(r => r.FullFileName.ToLower().Equals(info.FullName.ToLower())).ToList().Count == 0)
-                {
-                    Logger.LogInformation(String.Format("Adding file ref {0} to backup run ID {1}", info.FullName, br.BackupRunID));
-                    br.BackupFileRefs.Add(new BackupRunFileRef { FullFileName = info.FullName });
-                }
-
-            }
-
-            string backupCacheFullDir = String.Format("{0}{1}", this.BackupCacheDirectory, br.BackupRunID);
+            string backupCacheFullDir = this.GetCacheDirectory(backupRun);
 
             if (Directory.Exists(backupCacheFullDir) == false)
             {
@@ -61,27 +40,94 @@ namespace CloudBackupClient.ClientFileCacheHandlers
                 Directory.CreateDirectory(backupCacheFullDir);
             }
 
-        }
+            //File count tracked separately in case the last run is all directories
+            fileCount = 0;
 
-        private void PopulateFileList(string fileName, List<FileInfo> fileList)
-        {
-            if (File.Exists(fileName) || Directory.Exists(fileName))
+            this.Logger.LogInformation("Copying scanned files to backup cache");
+
+            int maxCacheMB = int.Parse(this.LocalBackupCacheSettings.GetSection("MaxCacheMB").Value);
+
+            foreach (var fileRef in backupRun.BackupFileRefs)
             {
-                fileList.Add(new FileInfo(fileName));
-
-                if (Directory.Exists(fileName))
+                if (currentBytes > maxCacheMB * 1000000)
                 {
-                    foreach (string dirFile in Directory.EnumerateFiles(fileName))
+                    Logger.LogInformation("Halting cache file copy due to max copy bytes exceded");
+                    break;
+                }
+
+                if (fileRef.CopiedToCache == true)
+                {
+                    Logger.LogDebug(String.Format("Skipping file already copied to backup cache: {0}", fileRef.FullFileName));
+                    continue;
+                }
+
+                cacheRef = GetCacheEntryForFile(fileRef.FullFileName, backupRun);
+
+                //Verify file wasn't removed from source or already copied to the cache
+                if ((Directory.Exists(fileRef.FullFileName) || File.Exists(fileRef.FullFileName)) && File.Exists(cacheRef) == false)
+                {
+                    if (Directory.Exists(fileRef.FullFileName))
                     {
-                        fileList.Add(new FileInfo(dirFile));
+                        Logger.LogInformation(String.Format("Creating backup cache directory: {0}", cacheRef));
+
+                        Directory.CreateDirectory(cacheRef);
+                    }
+                    else
+                    {
+                        if (File.Exists(cacheRef))
+                        {
+                            Logger.LogInformation(String.Format("Deleting previous version of cache file: {0}", cacheRef));
+
+                            File.Delete(cacheRef);
+                        }
+
+                        Logger.LogInformation(String.Format("Copying cache file from source: {0} to target: {1}", fileRef.FullFileName, cacheRef));
+
+                        var retry = 3;
+                        var success = false;
+
+                        while (!success)
+                        {
+                            try
+                            {
+                                File.Copy(fileRef.FullFileName, cacheRef);
+                                var cacheFile = new FileInfo(cacheRef);
+                                currentBytes += cacheFile.Length;
+
+                                success = true;
+
+                                Logger.LogDebug(String.Format("Cache copy current bytes count: {0}", currentBytes));
+                            } 
+                            catch(IOException ioEx)
+                            {
+                                if( --retry > 0)
+                                {
+                                    System.Threading.Thread.Sleep(500);
+                                    Logger.LogWarning($"Failed copy attempt with exception {ioEx.Message}");
+                                }
+                                else
+                                {
+                                    throw ioEx;
+                                }
+                            }
+                        }
                     }
 
-                    foreach (string dirFile in Directory.EnumerateDirectories(fileName))
-                    {
-                        PopulateFileList(dirFile, fileList);
-                    }
+                    fileRef.CopiedToCache = true;
+
+                    fileCount += 1;
+
+                    Logger.LogDebug("Saving file ref changes");                    
                 }
             }
+
+            if (fileCount == 0)
+            {
+                Logger.LogInformation("Backup file count == 0, setting complete flag");
+
+                backupRun.BackupRunCompleted = true;
+                backupRun.BackupRunEnd = DateTime.Now;                
+            }          
         }
 
         public Stream GetCacheStreamForItem(BackupRunFileRef item, BackupRun br)
@@ -114,10 +160,18 @@ namespace CloudBackupClient.ClientFileCacheHandlers
             //noop
         }
 
+        private string GetCacheDirectory(BackupRun backupRun) => String.Format("{0}{1}BackupRun-{2}",
+                                                                                                this.TempCopyDirectory,
+                                                                                                Path.DirectorySeparatorChar,
+                                                                                                backupRun.BackupRunID);
 
-        private string GetCacheEntryForFile(string fullFileName, BackupRun br) => String.Format("{0}{1}{2}{3}", this.BackupCacheDirectory, br.BackupRunID, Path.DirectorySeparatorChar, fullFileName.Substring(fullFileName.IndexOf(":") + 1));
+        private string GetCacheEntryForFile(string fullFileName, BackupRun backupRun) => String.Format("{0}{1}", 
+                                                                                                this.GetCacheDirectory(backupRun),                                                                                                 
+                                                                                                fullFileName.Substring(fullFileName.IndexOf(":") + 1));
 
-        private string BackupCacheDirectory => this.serviceProvider.GetService<IConfigurationRoot>().GetSection("BackupSettings").GetSection("TempCopyDirectory").Value;
+        private string TempCopyDirectory => this.LocalBackupCacheSettings.GetSection("TempCopyDirectory").Value;
+
+        private IConfigurationSection LocalBackupCacheSettings => this.serviceProvider.GetService<IConfigurationRoot>().GetSection("LocalClientFileCacheConfig");
         
         private ILogger Logger => this.serviceProvider.GetService<ILogger<LocalClientFileCacheHandler>>();
     }
