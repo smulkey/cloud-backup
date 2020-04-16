@@ -12,6 +12,9 @@ namespace CloudBackupClient.Models
         [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
         public int DirectoryRefID { get; set; }
 
+        [ForeignKey("BackupRun")]
+        public int BackupRunID { get; set; }
+
         public string DirectoryFullFileName { get; set; }
     }
 }

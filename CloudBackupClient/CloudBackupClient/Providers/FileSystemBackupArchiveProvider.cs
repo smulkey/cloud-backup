@@ -14,37 +14,25 @@ namespace CloudBackupClient.Providers
         private bool isInitialized;
         private string baseBackupDir;
         private IServiceProvider serviceProvider;
-        
+
         public FileSystemBackupArchiveProvider(IServiceProvider serviceProvider)
         {
             this.serviceProvider = serviceProvider;
         }
-                
-        public bool ArchiveFile(BackupRun backupRun, BackupRunFileRef fileRef, Stream cacheFileStream)
-        {            
 
-            if( false == isInitialized )
+        public bool ArchiveFile(BackupRun backupRun, BackupRunFileRef fileRef, Stream cacheFileStream)
+        {
+
+            if (false == isInitialized)
             {
                 this.Initialize();
             }
 
             Logger.LogDebug("Called FileSystemBackup.ArchiveFile");
-                                                           
-            FileInfo archiveFile = new FileInfo(String.Format("{0}{1}{2}{3}{4}", 
-                                                this.baseBackupDir, 
-                                                Path.DirectorySeparatorChar, 
-                                                backupRun.BackupRunID, 
-                                                Path.DirectorySeparatorChar, 
-                                                fileRef.FullFileName.Substring(3)));
 
-            if (archiveFile.Exists)
-            {
-                Logger.LogInformation(String.Format("Deleting existing archive entry for file: {0}", fileRef.FullFileName));
+            FileInfo archiveFile = GetArchiveFile(backupRun, fileRef);
 
-                archiveFile.Delete();
-            }
-
-            if(archiveFile.Directory.Exists == false)
+            if (archiveFile.Directory.Exists == false)
             {
                 Logger.LogInformation(String.Format("Creating parent directory for archive entry: {0}", archiveFile.Directory.FullName));
 
@@ -53,31 +41,23 @@ namespace CloudBackupClient.Providers
 
             if (cacheFileStream != null)
             {
-                byte[] buffer = new byte[1024];
-                int offset = 0;
-                int count;
-
                 Logger.LogInformation(String.Format("Creating archive entry for file: {0}", fileRef.FullFileName));
-                archiveFile.Create();
 
-                using (var writeStream = archiveFile.OpenWrite())
+                //TODO Check with checksum to potentially skip copy                
+
+                using (var outputFileStream = new FileStream(archiveFile.FullName, FileMode.Create))
                 {
-                    while ((count = cacheFileStream.Read(buffer, offset, buffer.Length)) > 0)
-                    {
-                        writeStream.Write(buffer, 0, count);
+                    cacheFileStream.CopyTo(outputFileStream);
+                }                
+            }
 
-                        offset += count;
-                    }
-                }
-            }  
-            
             Logger.LogInformation(String.Format("Completed archive copy for entry: {0} with result: {1}", fileRef.FullFileName, archiveFile.Exists));
 
             return true;
-       }
+        }
 
         public void Initialize()
-        {            
+        {
             var appConfigRoot = this.serviceProvider.GetService<IConfigurationRoot>();
             var configSection = appConfigRoot.GetSection("FileSystemArchiveTestConfig");
 
@@ -87,9 +67,9 @@ namespace CloudBackupClient.Providers
 
             if (String.IsNullOrWhiteSpace(baseDir))
             {
-                throw new Exception("Base backup directory null or empty");                
+                throw new Exception("Base backup directory null or empty");
             }
-            else if(Directory.Exists(baseDir) == false)
+            else if (Directory.Exists(baseDir) == false)
             {
                 Directory.CreateDirectory(baseDir);
             }
@@ -101,6 +81,12 @@ namespace CloudBackupClient.Providers
             this.isInitialized = true;
         }
 
+        private FileInfo GetArchiveFile(BackupRun backupRun, BackupRunFileRef backupRunFileRef) => new FileInfo(String.Format("{0}{1}{2}{3}{4}",
+                                                                                                                    this.baseBackupDir,
+                                                                                                                    Path.DirectorySeparatorChar,
+                                                                                                                    backupRun.BackupRunID,
+                                                                                                                    Path.DirectorySeparatorChar,
+                                                                                                                    backupRunFileRef.FullFileName.Substring(3)));
         private ILogger Logger => this.serviceProvider.GetService<ILogger<FileSystemBackupArchiveProvider>>();
     }
 }

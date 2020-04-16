@@ -16,6 +16,7 @@ namespace CloudBackupClient.ClientDBHandlers
 
         void UpdateBackupFileRef(BackupRunFileRef item);
 
-        void UpdateBackupRun(BackupRun br);       
+        void UpdateBackupRun(BackupRun br);
+        void UpdateBackupDirectoryRef(BackupDirectoryRef backupDirectoryRef);
     }
 }

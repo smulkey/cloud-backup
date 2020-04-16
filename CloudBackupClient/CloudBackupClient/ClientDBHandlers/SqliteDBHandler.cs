@@ -18,19 +18,10 @@ namespace CloudBackupClient.ClientDBHandlers
         private DbConnection dbConnection;
         private CloudBackupDbContext dbContext;
         private IServiceProvider serviceProvider;
-
-        private enum DbOps
-        {
-            AddBackupRun,
-            UpdateBackupRun,
-            UpdateBackupRunFileRef
-        }
-
+        
         public SqliteDBHandler(IServiceProvider serviceProvider)
         {
-            this.serviceProvider = serviceProvider;
-
-            
+            this.serviceProvider = serviceProvider;           
         }
 
         public void Initialize(IDictionary<string, string> dbProperties)
@@ -67,60 +58,34 @@ namespace CloudBackupClient.ClientDBHandlers
         {
             this.Logger.LogInformation("Adding BackupRun with {0} file refs", backupRun.BackupFileRefs == null ? 0 : backupRun.BackupFileRefs.Count);
 
-            this.TryDBOp(DbOps.AddBackupRun, backupRun, null);           
+            this.dbContext.Add<BackupRun>(backupRun);
+            dbContext.SaveChanges();
         }
 
         public void UpdateBackupRun(BackupRun backupRun)
-        {
+        {            
             this.Logger.LogInformation($"Updating BackupRun set with BackupRunID: {backupRun.BackupRunID}");
 
-            this.TryDBOp(DbOps.UpdateBackupRun, backupRun, null);
+            this.dbContext.Update<BackupRun>(backupRun);
+            dbContext.SaveChanges();
         }
 
+        public void UpdateBackupDirectoryRef(BackupDirectoryRef backupDirectoryRef)
+        {
+            this.Logger.LogInformation($"Updating BackupDirectoryRef set with DirectoryRefID: {backupDirectoryRef.DirectoryRefID}");
+
+            this.dbContext.Update<BackupDirectoryRef>(backupDirectoryRef);
+            dbContext.SaveChanges();
+        }
 
         public void UpdateBackupFileRef(BackupRunFileRef backupRunFileRef)
         {
             this.Logger.LogInformation($"Updating BackupRunFileRef set with BackupRunFileRefID: {backupRunFileRef.BackupRunFileRefID}");
 
-            this.TryDBOp(DbOps.UpdateBackupRunFileRef, null, backupRunFileRef);            
+            this.dbContext.Update<BackupRunFileRef>(backupRunFileRef);
+            dbContext.SaveChanges();
         }
 
-        
-        private void TryDBOp(DbOps dbOp, BackupRun backupRun, BackupRunFileRef backupRunFileRef)
-        {
-            try
-            {
-                switch (dbOp)
-                {
-                    case DbOps.AddBackupRun:
-                        this.dbContext.Add<BackupRun>(backupRun);
-                        break;
-
-                    case DbOps.UpdateBackupRun:
-                        this.dbContext.Update<BackupRun>(backupRun);
-                        break;
-
-                    case DbOps.UpdateBackupRunFileRef:
-                        this.dbContext.Update<BackupRunFileRef>(backupRunFileRef);
-                        break;
-                }
-            }
-            catch (Exception ex)
-            {
-
-                backupRun.FailedWithException = true;
-                backupRun.BackupRunEnd = DateTime.Now;
-                backupRun.ExceptionMessage = ex.Message;
-
-                dbContext.Update<BackupRun>(backupRun);
-
-                throw new Exception(String.Format("Backup run with ID {0} failed with exception: {1}", backupRun.BackupRunID, ex.Message));
-            }
-            finally
-            {
-                dbContext.SaveChanges();
-            }
-        }
 
         public void Dispose()
         {

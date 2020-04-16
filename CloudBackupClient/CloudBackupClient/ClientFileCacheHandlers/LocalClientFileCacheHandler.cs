@@ -25,8 +25,7 @@ namespace CloudBackupClient.ClientFileCacheHandlers
 
             long currentBytes;
             string cacheRef;
-            int fileCount;
-
+  
             backupRun.BackupRunStart = DateTime.Now;
 
             currentBytes = 0;
@@ -39,10 +38,7 @@ namespace CloudBackupClient.ClientFileCacheHandlers
 
                 Directory.CreateDirectory(backupCacheFullDir);
             }
-
-            //File count tracked separately in case the last run is all directories
-            fileCount = 0;
-
+            
             this.Logger.LogInformation("Copying scanned files to backup cache");
 
             int maxCacheMB = int.Parse(this.LocalBackupCacheSettings.GetSection("MaxCacheMB").Value);
@@ -63,9 +59,10 @@ namespace CloudBackupClient.ClientFileCacheHandlers
 
                 cacheRef = GetCacheEntryForFile(fileRef.FullFileName, backupRun);
 
+                               
                 //Verify file wasn't removed from source or already copied to the cache
-                if ((Directory.Exists(fileRef.FullFileName) || File.Exists(fileRef.FullFileName)) && File.Exists(cacheRef) == false)
-                {
+                if ((Directory.Exists(fileRef.FullFileName) || File.Exists(fileRef.FullFileName)))
+                {                   
                     if (Directory.Exists(fileRef.FullFileName))
                     {
                         Logger.LogInformation(String.Format("Creating backup cache directory: {0}", cacheRef));
@@ -113,26 +110,16 @@ namespace CloudBackupClient.ClientFileCacheHandlers
                         }
                     }
 
-                    fileRef.CopiedToCache = true;
-
-                    fileCount += 1;
+                    fileRef.CopiedToCache = true;                   
 
                     Logger.LogDebug("Saving file ref changes");                    
                 }
-            }
-
-            if (fileCount == 0)
-            {
-                Logger.LogInformation("Backup file count == 0, setting complete flag");
-
-                backupRun.BackupRunCompleted = true;
-                backupRun.BackupRunEnd = DateTime.Now;                
-            }          
+            }                
         }
 
-        public Stream GetCacheStreamForItem(BackupRunFileRef item, BackupRun br)
+        public Stream GetCacheStreamForItem(BackupRunFileRef item, BackupRun backupRun)
         {
-            var cacheFile = new FileInfo(GetCacheEntryForFile(item.FullFileName, br));
+            var cacheFile = new FileInfo(GetCacheEntryForFile(item.FullFileName, backupRun));
 
             if( File.Exists(cacheFile.FullName) == false)
             {
@@ -142,16 +129,13 @@ namespace CloudBackupClient.ClientFileCacheHandlers
             return cacheFile.OpenRead();
         }
 
-        public void CompleteFileArchive(BackupRunFileRef backupRef, BackupRun br)
+        public void CompleteFileArchive(BackupRunFileRef backupRef, BackupRun backupRun)
         {
-            var cacheFileName = GetCacheEntryForFile(backupRef.FullFileName, br);
+            var cacheFileName = GetCacheEntryForFile(backupRef.FullFileName, backupRun);
 
-            if (File.Exists(cacheFileName))
-            {
-                Logger.LogDebug("Deleting cache file after archive: {0}", cacheFileName);
-                                
-                File.Delete(cacheFileName);
-            }
+            Logger.LogDebug("Deleting cache file after archive: {0}", cacheFileName);
+
+            File.Delete(cacheFileName);
         }
 
 
