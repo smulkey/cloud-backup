@@ -1,9 +1,6 @@
-﻿
-using System;
+﻿using System;
 using System.Collections.Generic;
-using CloudBackupClient.Data;
 using CloudBackupClient.Models;
-using CloudBackupClient.Providers;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -15,48 +12,19 @@ using System.IO;
 namespace CloudBackupClient
 {
     public class BackupClient
-    {   
-     
+    {
         private int totalRunTimeSeconds;
-        private DateTime stopRunTime;        
+        private DateTime stopRunTime;
         private IServiceProvider serviceProvider;
 
-        static void Main(string[] args)
-        {
-            try
-            {
-                var appConfig = new ConfigurationBuilder()
-                                        .SetBasePath(System.IO.Directory.GetCurrentDirectory())
-                                        .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true).Build();
-
-                var serviceProvider = new ServiceCollection()
-                                                .AddSingleton<ICloudBackupArchiveProvider, FileSystemBackupArchiveProvider>()
-                                                .AddSingleton<IClientDBHandler, SqliteDBHandler>()
-                                                .AddSingleton<IConfigurationRoot>(provider => appConfig)
-                                                .AddSingleton<IClientFileCacheHandler, LocalClientFileCacheHandler>()
-                                                .AddLogging(builder => builder.AddConsole())
-                                                .BuildServiceProvider();
-
-                //TODO Get from properties file
-                var dbProperties = new Dictionary<string, string>();
-                dbProperties[nameof(SqliteDBHandler.ConnectionString)] = serviceProvider.GetService<IConfigurationRoot>().GetSection("LocalDBTestConfig").GetSection("BackupRunConnStr").Value;
-                                
-                ((SqliteDBHandler)serviceProvider.GetService<IClientDBHandler>()).Initialize(dbProperties);
-
-                (new BackupClient()).Start(serviceProvider);
-                
-            } catch(Exception ex)
-            {                
-                Console.WriteLine("Program fail with exception: {0}", ex.Message);
-                Console.WriteLine(ex.StackTrace);
-            }
+        public BackupClient(IServiceProvider serviceProvider)
+        {            
+            this.serviceProvider = serviceProvider;           
         }
 
-        private void Start(IServiceProvider serviceProvider)
+        public void Start()
         {
-            this.serviceProvider = serviceProvider;
-
-            this.Logger.LogInformation("Starting backup run at {0}", DateTime.Now.ToString());
+            this.Logger.LogInformation($"Starting backup run at {DateTime.Now}");
 
             var appConfigRoot = this.serviceProvider.GetService<IConfigurationRoot>();
             var config = appConfigRoot.GetSection("BackupSettings");
@@ -67,9 +35,9 @@ namespace CloudBackupClient
             }
 
             this.stopRunTime = DateTime.Now.AddSeconds(this.TotalRunTimeSeconds);
-            
+
             BackupRun backupRun = null;
-                                
+
             try
             {
                 var openBackupRuns = this.ClientDBHandler.GetOpenBackupRuns();
@@ -78,17 +46,17 @@ namespace CloudBackupClient
                 {
                     throw new Exception("More than one open backup");
                 }
-                else if(openBackupRuns.Count == 1)
-                {                    
+                else if (openBackupRuns.Count == 1)
+                {
                     backupRun = openBackupRuns.First<BackupRun>();
                     this.Logger.LogInformation($"Restarting backup run with ID {backupRun.BackupRunID}");
                 }
                 else
-                {                    
+                {
                     this.Logger.LogInformation("Creating new backup run");
                     backupRun = CreateBackupRun();
                 }
-                
+
                 this.Logger.LogInformation(String.Format("Processing open backup run with ID: {0}", backupRun.BackupRunID));
 
                 ArchiveCurrentBackupRun(backupRun);
@@ -100,7 +68,7 @@ namespace CloudBackupClient
                     this.Logger.LogError($"Couldn't complete processing due to error - {ex.Message} {ex.StackTrace}");
                 }
                 else
-                { 
+                {
                     this.Logger.LogError($"Error in processing backup run with ID: {backupRun.BackupRunID} - error message: {ex.Message}  {ex.StackTrace}");
 
                     backupRun.BackupRunCompleted = true;
@@ -132,12 +100,12 @@ namespace CloudBackupClient
 
             do
             {
-                filesArchived = 0; 
+                filesArchived = 0;
 
                 this.PopulateFilesForBackupRun(backupRun);
 
                 this.ClientFileCacheHandler.InitializeBackupRun(backupRun);
-                               
+
                 this.ClientDBHandler.UpdateBackupRun(backupRun);
 
 
@@ -146,16 +114,16 @@ namespace CloudBackupClient
                     //TODO Find way to store empty directories
 
                     if (Directory.Exists(backupFileRef.FullFileName) == false &&
-                        backupFileRef.CopiedToCache == true && 
-                        backupFileRef.CopiedToArchive == false && 
-                        backupRun.FailedWithException == false && 
+                        backupFileRef.CopiedToCache == true &&
+                        backupFileRef.CopiedToArchive == false &&
+                        backupRun.FailedWithException == false &&
                         haltTimeNotExceeded == true)
                     {
                         bool success;
 
                         using (var cacheFileStream = this.ClientFileCacheHandler.GetCacheStreamForItem(backupFileRef, backupRun))
                         {
-                            success = this.serviceProvider.GetService<ICloudBackupArchiveProvider>().ArchiveFile(backupRun, backupFileRef, cacheFileStream);                            
+                            success = this.serviceProvider.GetService<ICloudBackupArchiveProvider>().ArchiveFile(backupRun, backupFileRef, cacheFileStream);
                         }
 
                         if (success == false)
@@ -173,7 +141,7 @@ namespace CloudBackupClient
                             this.ClientDBHandler.UpdateBackupFileRef(backupFileRef);
 
                             this.ClientFileCacheHandler.CompleteFileArchive(backupFileRef, backupRun);
-                        }                       
+                        }
                     }
 
                     haltTimeNotExceeded = (DateTime.Now.CompareTo(this.stopRunTime) < 0);
@@ -187,11 +155,11 @@ namespace CloudBackupClient
 
             } while (backupRun.BackupRunCompleted == false && haltTimeNotExceeded == true && filesArchived > 0);
 
-            if( haltTimeNotExceeded == false )
+            if (haltTimeNotExceeded == false)
             {
-                Logger.LogInformation($"Exiting backup run ID {backupRun.BackupRunID} due to halt time exceeded");    
-            } 
-            else if(filesArchived == 0)
+                Logger.LogInformation($"Exiting backup run ID {backupRun.BackupRunID} due to halt time exceeded");
+            }
+            else if (filesArchived == 0)
             {
                 Logger.LogInformation($"Setting complete flag for backup run ID: {backupRun.BackupRunID}");
 
@@ -199,13 +167,13 @@ namespace CloudBackupClient
                 this.ClientDBHandler.UpdateBackupRun(backupRun);
             }
         }
-        
+
         private BackupRun CreateBackupRun()
         {
             Logger.LogDebug("CreateBackupRun called");
             var appConfigRoot = this.serviceProvider.GetService<IConfigurationRoot>();
             var config = appConfigRoot.GetSection("BackupSettings");
-            
+
             if (config == null)
             {
                 throw new Exception("No config section found for backup settings");
@@ -219,10 +187,10 @@ namespace CloudBackupClient
             }
 
             var backupRun = new BackupRun
-                                {
-                                    BackupFileRefs = new List<BackupRunFileRef>(),
-                                    BackupDirectories = new List<BackupDirectoryRef>()
-                                };
+            {
+                BackupFileRefs = new List<BackupRunFileRef>(),
+                BackupDirectories = new List<BackupDirectoryRef>()
+            };
 
 
             string[] dirList = this.GetBackupSettingsConfigValue("BackupDirectories").Split(',');
@@ -232,14 +200,7 @@ namespace CloudBackupClient
                 backupRun.BackupDirectories.Add(new BackupDirectoryRef { DirectoryFullFileName = dirList[i] });
             }
 
-            this.ClientDBHandler.AddBackupRun(backupRun);
-          
-            foreach(var backupDirectoryRef in backupRun.BackupDirectories)
-            {
-                backupDirectoryRef.BackupRunID = backupRun.BackupRunID;
-
-                this.ClientDBHandler.UpdateBackupDirectoryRef(backupDirectoryRef);
-            }            
+            this.ClientDBHandler.AddBackupRun(backupRun);           
 
             Logger.LogInformation(String.Format("Created new backup run with ID: {0}", backupRun.BackupRunID));
 
@@ -300,12 +261,12 @@ namespace CloudBackupClient
                 }
             }
         }
-        
+
         private string GetBackupSettingsConfigValue(string key)
         {
             var appConfigRoot = this.serviceProvider.GetService<IConfigurationRoot>();
             var config = appConfigRoot.GetSection("BackupSettings");
-            
+
             if (config == null)
             {
                 throw new Exception("No config section found for backup settings");
@@ -320,16 +281,20 @@ namespace CloudBackupClient
 
             return config.Value;
         }
-   
+
         private int TotalRunTimeSeconds => (this.totalRunTimeSeconds == 0)
                                             ? this.totalRunTimeSeconds = Int32.Parse(this.GetBackupSettingsConfigValue("TotalRunTimeSeconds"))
-                                            : this.totalRunTimeSeconds;        
-                
+                                            : this.totalRunTimeSeconds;
+
         private IClientDBHandler ClientDBHandler => this.serviceProvider.GetService<IClientDBHandler>();
 
         private IClientFileCacheHandler ClientFileCacheHandler => this.serviceProvider.GetService<IClientFileCacheHandler>();
 
-        private ILogger Logger => this.serviceProvider.GetService<ILogger<BackupClient>>();
-        
+        private ILogger Logger => this.serviceProvider.GetService<ILogger<Program>>();
+
+        public bool TestMethod()
+        {
+            return (this.ClientDBHandler != null);
+        }
     }
 }

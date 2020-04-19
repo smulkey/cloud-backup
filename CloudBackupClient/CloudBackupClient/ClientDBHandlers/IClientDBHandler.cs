@@ -10,6 +10,8 @@ namespace CloudBackupClient.ClientDBHandlers
     {
         public void Initialize(IDictionary<string, string> dbProperties);
 
+        BackupRun GetBackupRun(int backupRunID);
+
         IList<BackupRun> GetOpenBackupRuns();
 
         void AddBackupRun(BackupRun br);
@@ -17,6 +19,5 @@ namespace CloudBackupClient.ClientDBHandlers
         void UpdateBackupFileRef(BackupRunFileRef item);
 
         void UpdateBackupRun(BackupRun br);
-        void UpdateBackupDirectoryRef(BackupDirectoryRef backupDirectoryRef);
     }
 }

@@ -19,7 +19,7 @@ namespace CloudBackupClient.ClientFileCacheHandlers
         {
             this.serviceProvider = serviceProvider;
         }
-
+                
         public void PopulateFilesForBackupRun(BackupRun backupRun)
         {
             Logger.LogDebug("PopulateFilesForBackupRun called");

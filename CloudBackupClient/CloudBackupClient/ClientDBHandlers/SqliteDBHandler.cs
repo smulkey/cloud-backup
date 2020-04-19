@@ -29,20 +29,17 @@ namespace CloudBackupClient.ClientDBHandlers
             //TODO Add validation
             this.ConnectionString = dbProperties[nameof(this.ConnectionString)];
 
+            this.Logger.LogInformation($"Initializing DB handler with conn string: ${this.ConnectionString}");
+            
             dbConnection = new SqliteConnection(this.ConnectionString);
             dbConnection.Open();
 
             var options = new DbContextOptionsBuilder<CloudBackupDbContext>()
                 .UseSqlite(dbConnection)
                 .Options;
-
-            // Create the schema in the database
+                        
             dbContext = new CloudBackupDbContext(options);
-            dbContext.Database.EnsureCreated();
-
-            var count = dbContext.BackupRuns.Count<BackupRun>();
-
-            Logger.LogInformation(count.ToString());
+            dbContext.Database.EnsureCreated();         
         }
 
         public IList<BackupRun> GetOpenBackupRuns()
@@ -69,15 +66,7 @@ namespace CloudBackupClient.ClientDBHandlers
             this.dbContext.Update<BackupRun>(backupRun);
             dbContext.SaveChanges();
         }
-
-        public void UpdateBackupDirectoryRef(BackupDirectoryRef backupDirectoryRef)
-        {
-            this.Logger.LogInformation($"Updating BackupDirectoryRef set with DirectoryRefID: {backupDirectoryRef.DirectoryRefID}");
-
-            this.dbContext.Update<BackupDirectoryRef>(backupDirectoryRef);
-            dbContext.SaveChanges();
-        }
-
+              
         public void UpdateBackupFileRef(BackupRunFileRef backupRunFileRef)
         {
             this.Logger.LogInformation($"Updating BackupRunFileRef set with BackupRunFileRefID: {backupRunFileRef.BackupRunFileRefID}");
@@ -105,6 +94,8 @@ namespace CloudBackupClient.ClientDBHandlers
             
         }
 
+        public BackupRun GetBackupRun(int backupRunID) => this.dbContext.BackupRuns.Find(backupRunID);
+        
         private ILogger Logger => this.serviceProvider.GetService<ILogger<SqliteDBHandler>>();
     }
     //public class LocalDBHandler : IClientDBHandler
