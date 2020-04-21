@@ -6,9 +6,9 @@ using CloudBackupClient.Models;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace CloudBackupClient
+namespace CloudBackupClient.ArchiveProviders
 {
-    public interface ICloudBackupArchiveProvider
+    public interface ICloudBackupArchiveProvider : ICloudBackupService
     {
         public bool ArchiveFile(BackupRun backupRun, BackupRunFileRef fileRef, Stream cacheFileStream);
         

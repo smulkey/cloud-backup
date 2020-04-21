@@ -6,20 +6,21 @@ using Microsoft.Extensions.DependencyInjection;
 using CloudBackupClient.Models;
 using CloudBackupClient.ClientDBHandlers;
 
-namespace CloudBackupClient.Tests.ComponentTests
+namespace CloudBackupClient.Tests.UnitTests
 {
     [TestFixture]
-    public class SqliteDBHandler_Test : CloudBackupTestBase
+    public class SqliteDBHandler_UnitTest : CloudBackupTestBase
     {
-        protected override string ConfigurationFileJson => "appsettings_test1.json";
-
+        protected override string ConfigurationJson => "{\"ConnectionStrings\": { \"SqliteConnString\": \"Data Source=:memory:\"} }";
+  
+        [OneTimeSetUp]
         public void TestSetup()
         {
-
+            this.Initialize();
         }
 
         [Test]
-        public void BackupRunDataTest()
+        public void SqliteDBHandlerTest()
         {
 
             var dirList = new List<BackupDirectoryRef>
@@ -88,27 +89,41 @@ namespace CloudBackupClient.Tests.ComponentTests
 
             updatedBackupRun = dbHandler.GetBackupRun(updatedBackupRun.BackupRunID);
 
-            Assert.AreEqual(updatedBackupRun.BackupFileRefs[0].FullFileName, updatedBackupFileRun1.FullFileName);
-            Assert.AreEqual(updatedBackupRun.BackupFileRefs[1].FullFileName, updatedBackupFileRun2.FullFileName);
+            Assert.AreEqual(updatedBackupRun.BackupFileRefs[0].CopiedToCache, updatedBackupFileRun1.CopiedToCache);
+            Assert.AreEqual(updatedBackupRun.BackupFileRefs[0].CopiedToArchive, updatedBackupFileRun1.CopiedToArchive);
+            Assert.AreEqual(updatedBackupRun.BackupFileRefs[1].CopiedToCache, updatedBackupFileRun2.CopiedToCache);
+            Assert.AreEqual(updatedBackupRun.BackupFileRefs[1].CopiedToArchive, updatedBackupFileRun2.CopiedToArchive);
 
             updatedBackupRun.BackupRunStart = DateTime.Now.AddSeconds(-10);
             updatedBackupRun.BackupRunEnd = DateTime.Now.AddSeconds(10);
 
             updatedBackupRun.BackupRunCompleted = true;
             
-            var finalBackupRun1 = dbHandler.GetBackupRun(updatedBackupRun.BackupRunID);
+            var completedBackupRun = dbHandler.GetBackupRun(updatedBackupRun.BackupRunID);
+                        
+            Assert.AreEqual(updatedBackupRun.BackupRunCompleted, true);
+            Assert.AreEqual(updatedBackupRun.BackupRunStart, completedBackupRun.BackupRunStart);
+            Assert.AreEqual(updatedBackupRun.BackupRunEnd, completedBackupRun.BackupRunEnd);
 
-            //TODO replace with member compare
-            Assert.AreEqual(updatedBackupRun, finalBackupRun1);
+            completedBackupRun.BackupRunCompleted = false;
+            completedBackupRun.FailedWithException = true;
+            completedBackupRun.ExceptionMessage = "test exception";
 
-            finalBackupRun1.BackupRunCompleted = false;
-            finalBackupRun1.FailedWithException = true;
-            finalBackupRun1.ExceptionMessage = "test exception";
+            var failedBackupRun = dbHandler.GetBackupRun(updatedBackupRun.BackupRunID);
 
-            var finalBackupRun2 = dbHandler.GetBackupRun(updatedBackupRun.BackupRunID);
+            Assert.AreEqual(failedBackupRun.BackupRunCompleted, false);
+            Assert.AreEqual(failedBackupRun.FailedWithException, true);
+            Assert.AreEqual(failedBackupRun.ExceptionMessage, completedBackupRun.ExceptionMessage);
+        }
 
-            //TODO replace with member compare
-            Assert.AreEqual(updatedBackupRun, finalBackupRun2);
-        }    
+        [OneTimeTearDown]
+        public void TestComplete()
+        {
+            this.ServiceProvider.GetService<IClientDBHandler>().Dispose();
+        }
+
+        override protected IClientDBHandler ClientDBHandler => new SqliteDBHandler();
     }
+
+
 }

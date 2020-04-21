@@ -15,11 +15,16 @@ namespace CloudBackupClient.ClientFileCacheHandlers
 
         private IServiceProvider serviceProvider;
                 
-        public TestFileCacheHandler(IServiceProvider serviceProvider)
+        public TestFileCacheHandler()
+        {
+            
+        }
+
+        public void Initialize(IServiceProvider serviceProvider)
         {
             this.serviceProvider = serviceProvider;
         }
-                
+
         public void PopulateFilesForBackupRun(BackupRun backupRun)
         {
             Logger.LogDebug("PopulateFilesForBackupRun called");
@@ -60,7 +65,7 @@ namespace CloudBackupClient.ClientFileCacheHandlers
         {
             //noop
         }
-        
+
         private ILogger Logger => this.serviceProvider.GetService<ILogger<TestFileCacheHandler>>();
     }
 }

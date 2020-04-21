@@ -7,7 +7,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
-namespace CloudBackupClient.Providers
+namespace CloudBackupClient.ArchiveProviders
 {
     public class FileSystemBackupArchiveProvider : ICloudBackupArchiveProvider
     {
@@ -15,7 +15,12 @@ namespace CloudBackupClient.Providers
         private string baseBackupDir;
         private IServiceProvider serviceProvider;
 
-        public FileSystemBackupArchiveProvider(IServiceProvider serviceProvider)
+        public FileSystemBackupArchiveProvider()
+        {
+
+        }
+
+        public void Initialize(IServiceProvider serviceProvider)
         {
             this.serviceProvider = serviceProvider;
         }
@@ -87,6 +92,12 @@ namespace CloudBackupClient.Providers
                                                                                                                     backupRun.BackupRunID,
                                                                                                                     Path.DirectorySeparatorChar,
                                                                                                                     backupRunFileRef.FullFileName.Substring(3)));
+
+        public void Dispose() 
+        {
+            //no op
+        }
+
         private ILogger Logger => this.serviceProvider.GetService<ILogger<FileSystemBackupArchiveProvider>>();
     }
 }

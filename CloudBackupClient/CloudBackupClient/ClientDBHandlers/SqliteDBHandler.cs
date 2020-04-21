@@ -9,29 +9,31 @@ using CloudBackupClient.Data;
 using Microsoft.Extensions.Logging;
 using CloudBackupClient.Models;
 using System.Data.Common;
+using Microsoft.Extensions.Configuration;
 
 namespace CloudBackupClient.ClientDBHandlers
 {
     public class SqliteDBHandler : IClientDBHandler
-    {
-        public string ConnectionString { get; private set; }
+    {        
         private DbConnection dbConnection;
         private CloudBackupDbContext dbContext;
         private IServiceProvider serviceProvider;
-        
-        public SqliteDBHandler(IServiceProvider serviceProvider)
+                
+        public  SqliteDBHandler()
         {
-            this.serviceProvider = serviceProvider;           
+
         }
 
-        public void Initialize(IDictionary<string, string> dbProperties)
+        public void Initialize (IServiceProvider serviceProvider)
         {
+            this.serviceProvider = serviceProvider;           
+        
             //TODO Add validation
-            this.ConnectionString = dbProperties[nameof(this.ConnectionString)];
+            var connString = serviceProvider.GetService<IConfigurationRoot>().GetConnectionString("SqliteConnString");
 
-            this.Logger.LogInformation($"Initializing DB handler with conn string: ${this.ConnectionString}");
+            this.Logger.LogInformation("Initializing DB handler");
             
-            dbConnection = new SqliteConnection(this.ConnectionString);
+            dbConnection = new SqliteConnection(connString);
             dbConnection.Open();
 
             var options = new DbContextOptionsBuilder<CloudBackupDbContext>()
@@ -97,54 +99,5 @@ namespace CloudBackupClient.ClientDBHandlers
         public BackupRun GetBackupRun(int backupRunID) => this.dbContext.BackupRuns.Find(backupRunID);
         
         private ILogger Logger => this.serviceProvider.GetService<ILogger<SqliteDBHandler>>();
-    }
-    //public class LocalDBHandler : IClientDBHandler
-    //{
-        /*
-         *  var connection = new SqliteConnection(BackupClient.AppConfig.GetConnectionString("BackupRunConnStr"));
-
-            try
-            {
-                connection.Open();
-
-                var options = new DbContextOptionsBuilder<CloudBackupDbContext>()
-                    .UseSqlite(connection)
-                    .Options;
-
-         using (var dbContext = new CloudBackupDbContext(options))
-                {
-                    BackupRun br = null;
-
-                    try
-                    {
-                        dbContext.Database.EnsureCreated();
-
-                      
-                    }
-                    catch (Exception ex)
-                    {
-                        
-                            try
-                            {
-                                dbContext.SaveChanges();
-                            }
-                            catch (Exception dbEx)
-                            {
-                                this.Logger.LogError(dbEx, "Couldn't save backup run exception: {0}", dbEx.Message);
-                            }
-
-                        }
-                        
-                    }
-                }
-
-        // connection.Close();
-                    */
-
-
-       
-
-
-       
-    //}
+    }    
 }

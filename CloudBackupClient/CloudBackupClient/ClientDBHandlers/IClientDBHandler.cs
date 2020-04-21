@@ -6,10 +6,9 @@ using System.Text;
 
 namespace CloudBackupClient.ClientDBHandlers
 {
-    public interface IClientDBHandler : IDisposable
+    public interface IClientDBHandler : ICloudBackupService
     {
-        public void Initialize(IDictionary<string, string> dbProperties);
-
+        
         BackupRun GetBackupRun(int backupRunID);
 
         IList<BackupRun> GetOpenBackupRuns();

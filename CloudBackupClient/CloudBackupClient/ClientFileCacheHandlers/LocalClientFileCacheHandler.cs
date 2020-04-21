@@ -10,11 +10,16 @@ using Microsoft.Extensions.Logging;
 
 namespace CloudBackupClient.ClientFileCacheHandlers
 {
-    class LocalClientFileCacheHandler : IClientFileCacheHandler
+    public class LocalClientFileCacheHandler : IClientFileCacheHandler
     {
         private IServiceProvider serviceProvider;
         
-        public LocalClientFileCacheHandler(IServiceProvider serviceProvider)
+        public LocalClientFileCacheHandler()
+        {
+            
+        }
+
+        public void Initialize(IServiceProvider serviceProvider)
         {
             this.serviceProvider = serviceProvider;
         }

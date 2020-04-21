@@ -8,6 +8,7 @@ using System.Linq;
 using CloudBackupClient.ClientDBHandlers;
 using CloudBackupClient.ClientFileCacheHandlers;
 using System.IO;
+using CloudBackupClient.ArchiveProviders;
 
 namespace CloudBackupClient
 {

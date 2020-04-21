@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using CloudBackupClient.Providers;
+using CloudBackupClient.ArchiveProviders;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -22,18 +22,17 @@ namespace CloudBackupClient
 
                 var serviceProvider = new ServiceCollection()
                                                 .AddSingleton<ICloudBackupArchiveProvider, FileSystemBackupArchiveProvider>()
-                                                .AddSingleton<IClientDBHandler, SqliteDBHandler>()
-                                                .AddSingleton<IConfigurationRoot>(provider => appConfig)
+                                                .AddSingleton<IClientDBHandler, SqliteDBHandler>()                                                
                                                 .AddSingleton<IClientFileCacheHandler, LocalClientFileCacheHandler>()
                                                 .AddSingleton<BackupClient>()
+                                                .AddSingleton<IConfigurationRoot>(provider => appConfig)
                                                 .AddLogging(builder => builder.AddConsole())
                                                 .BuildServiceProvider();
 
-                //TODO Get from properties file
-                var dbProperties = new Dictionary<string, string>();
-                dbProperties[nameof(SqliteDBHandler.ConnectionString)] = serviceProvider.GetService<IConfigurationRoot>().GetSection("LocalDBTestConfig").GetSection("BackupRunConnStr").Value;
-                                
-                ((SqliteDBHandler)serviceProvider.GetService<IClientDBHandler>()).Initialize(dbProperties);
+
+                serviceProvider.GetService<ICloudBackupArchiveProvider>().Initialize(serviceProvider);                
+                serviceProvider.GetService<IClientDBHandler>().Initialize(serviceProvider);
+                serviceProvider.GetService<IClientFileCacheHandler>().Initialize(serviceProvider);
 
                 serviceProvider.GetService<BackupClient>().Start();
 

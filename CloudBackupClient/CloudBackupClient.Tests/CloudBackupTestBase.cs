@@ -1,11 +1,15 @@
-﻿using CloudBackupClient.ClientDBHandlers;
+﻿using CloudBackupClient.ArchiveProviders;
+using CloudBackupClient.ClientDBHandlers;
 using CloudBackupClient.ClientFileCacheHandlers;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Primitives;
 using Moq;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text;
 
 namespace CloudBackupClient.Tests
@@ -13,28 +17,38 @@ namespace CloudBackupClient.Tests
     public abstract class CloudBackupTestBase
     {
         public CloudBackupTestBase()
-        {
-            var appConfig = new ConfigurationBuilder()
-                                      .SetBasePath(System.IO.Directory.GetCurrentDirectory())
-                                      .AddJsonFile(this.ConfigurationFileJson, optional: false, reloadOnChange: false).Build();
-
-            this.ServiceProvider = new ServiceCollection()
-                                            .AddSingleton<ICloudBackupArchiveProvider>((new Mock<ICloudBackupArchiveProvider>()).Object)
-                                            .AddSingleton<IClientDBHandler, SqliteDBHandler>()
-                                            .AddSingleton(provider => appConfig)
-                                            .AddSingleton<IClientFileCacheHandler, TestFileCacheHandler>()
-                                            .AddSingleton<BackupClient>()
-                                            .AddLogging(builder => builder.AddConsole())
-                                            .BuildServiceProvider();
-
-            var dbProperties = new Dictionary<string, string>();
-            dbProperties[nameof(SqliteDBHandler.ConnectionString)] = appConfig.GetSection("ConnectionString").Value;
-
-            ((SqliteDBHandler)this.ServiceProvider.GetService<IClientDBHandler>()).Initialize(dbProperties);
+        {   
+            
         }
 
-        public IServiceProvider ServiceProvider { get; }
+        protected void Initialize()
+        {
+            this.ServiceProvider = new ServiceCollection()
+                                                .AddSingleton<ICloudBackupArchiveProvider>(this.CloudBackupArchiveProvider ?? new Mock<ICloudBackupArchiveProvider>().Object)
+                                                .AddSingleton<IClientDBHandler>(this.ClientDBHandler ?? new Mock<IClientDBHandler>().Object)
+                                                .AddSingleton<IClientFileCacheHandler>(this.ClientFileCacheHandler ?? new Mock<IClientFileCacheHandler>().Object)
+                                                .AddSingleton<BackupClient>()
+                                                .AddSingleton<IConfigurationRoot>(provider => new ConfigurationBuilder()
+                                                                                                .AddJsonFile(new InMemoryFileProvider(this.ConfigurationJson), "appsettings.json", false, false)
+                                                                                                .Build())
+                                                .AddLogging(builder => builder.AddConsole())
+                                                .BuildServiceProvider();
 
-        abstract protected string ConfigurationFileJson { get;  }
+            this.ServiceProvider.GetService<ICloudBackupArchiveProvider>().Initialize(this.ServiceProvider);
+            this.ServiceProvider.GetService<IClientDBHandler>().Initialize(this.ServiceProvider);
+            this.ServiceProvider.GetService<IClientFileCacheHandler>().Initialize(this.ServiceProvider);
+        }
+
+        protected IServiceProvider ServiceProvider { get; set; }
+
+        abstract protected string ConfigurationJson { get;  }
+
+        virtual protected ICloudBackupArchiveProvider CloudBackupArchiveProvider { get; }
+
+        virtual protected IClientDBHandler ClientDBHandler { get; }
+
+        virtual protected IClientFileCacheHandler ClientFileCacheHandler { get; }
+
     }
+
 }

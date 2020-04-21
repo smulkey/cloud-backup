@@ -6,7 +6,7 @@ using System.Text;
 
 namespace CloudBackupClient.ClientFileCacheHandlers
 {
-    public interface IClientFileCacheHandler : IDisposable
+    public interface IClientFileCacheHandler : ICloudBackupService
     {
         void InitializeBackupRun(BackupRun backupRun);
 

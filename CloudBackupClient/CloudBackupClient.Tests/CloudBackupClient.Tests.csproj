@@ -17,10 +17,4 @@
     <ProjectReference Include="..\CloudBackupClient\CloudBackupClient.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <None Update="appsettings_test1.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
-
 </Project>
