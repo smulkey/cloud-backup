@@ -13,10 +13,10 @@ namespace CloudBackupClient.ClientDBHandlers
 
         IList<BackupRun> GetOpenBackupRuns();
 
-        void AddBackupRun(BackupRun br);
+        void AddBackupRun(BackupRun backupRun);
 
-        void UpdateBackupFileRef(BackupRunFileRef item);
+        void UpdateBackupFileRef(BackupRunFileRef backupRunFileRef);
 
-        void UpdateBackupRun(BackupRun br);
+        void UpdateBackupRun(BackupRun backupRun);
     }
 }

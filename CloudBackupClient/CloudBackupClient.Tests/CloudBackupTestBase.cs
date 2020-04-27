@@ -14,14 +14,9 @@ using System.Text;
 
 namespace CloudBackupClient.Tests
 {
-    public abstract class CloudBackupTestBase
+    public abstract class CloudBackupTestBase : IDisposable
     {
         public CloudBackupTestBase()
-        {   
-            
-        }
-
-        protected void Initialize()
         {
             this.ServiceProvider = new ServiceCollection()
                                                 .AddSingleton<ICloudBackupArchiveProvider>(this.CloudBackupArchiveProvider ?? new Mock<ICloudBackupArchiveProvider>().Object)
@@ -39,9 +34,15 @@ namespace CloudBackupClient.Tests
             this.ServiceProvider.GetService<IClientFileCacheHandler>().Initialize(this.ServiceProvider);
         }
 
+
+        virtual public void Dispose()
+        {
+
+        }
+
         protected IServiceProvider ServiceProvider { get; set; }
 
-        abstract protected string ConfigurationJson { get;  }
+        abstract protected string ConfigurationJson { get; }
 
         virtual protected ICloudBackupArchiveProvider CloudBackupArchiveProvider { get; }
 

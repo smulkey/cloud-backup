@@ -5,7 +5,7 @@ VisualStudioVersion = 16.0.29609.76
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CloudBackupClient", "CloudBackupClient\CloudBackupClient.csproj", "{EA6C170C-E0CC-4B26-985E-548E87DFF5C9}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CloudBackupClient.Tests", "CloudBackupClient.Tests\CloudBackupClient.Tests.csproj", "{2AB2AC4C-5827-47FA-A968-4A4B0C0AD1FE}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CloudBackupClient.Tests", "CloudBackupClient.Tests\CloudBackupClient.Tests.csproj", "{8A270052-C0F1-4E2A-949D-E8414B6FA275}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -17,10 +17,10 @@ Global
 		{EA6C170C-E0CC-4B26-985E-548E87DFF5C9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{EA6C170C-E0CC-4B26-985E-548E87DFF5C9}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{EA6C170C-E0CC-4B26-985E-548E87DFF5C9}.Release|Any CPU.Build.0 = Release|Any CPU
-		{2AB2AC4C-5827-47FA-A968-4A4B0C0AD1FE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{2AB2AC4C-5827-47FA-A968-4A4B0C0AD1FE}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{2AB2AC4C-5827-47FA-A968-4A4B0C0AD1FE}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{2AB2AC4C-5827-47FA-A968-4A4B0C0AD1FE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8A270052-C0F1-4E2A-949D-E8414B6FA275}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8A270052-C0F1-4E2A-949D-E8414B6FA275}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8A270052-C0F1-4E2A-949D-E8414B6FA275}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8A270052-C0F1-4E2A-949D-E8414B6FA275}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

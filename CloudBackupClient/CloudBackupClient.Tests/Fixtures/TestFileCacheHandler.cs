@@ -14,10 +14,10 @@ namespace CloudBackupClient.ClientFileCacheHandlers
         public IDictionary<string, byte[]> FileSet { get; set; }
 
         private IServiceProvider serviceProvider;
-                
+
         public TestFileCacheHandler()
         {
-            
+
         }
 
         public void Initialize(IServiceProvider serviceProvider)
@@ -29,7 +29,7 @@ namespace CloudBackupClient.ClientFileCacheHandlers
         {
             Logger.LogDebug("PopulateFilesForBackupRun called");
 
-            foreach(var fileName in this.FileSet.Keys)
+            foreach (var fileName in this.FileSet.Keys)
             {
                 var brf = new BackupRunFileRef
                 {
@@ -52,7 +52,7 @@ namespace CloudBackupClient.ClientFileCacheHandlers
         {
             Logger.LogDebug($"GetCacheStreamForItem called - returning bytes for file name key: {backupFileRef.FullFileName}");
 
-            return new MemoryStream(this.FileSet[backupFileRef.FullFileName]);            
+            return new MemoryStream(this.FileSet[backupFileRef.FullFileName]);
         }
 
         public void CompleteFileArchive(BackupRunFileRef backupRef, BackupRun br)

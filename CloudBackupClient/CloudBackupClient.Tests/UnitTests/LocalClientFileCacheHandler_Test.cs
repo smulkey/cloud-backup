@@ -1,48 +1,31 @@
 ﻿using CloudBackupClient.ClientFileCacheHandlers;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.FileProviders;
-using Microsoft.Extensions.Primitives;
-using NUnit.Framework;
-using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Text;
+using Xunit;
 
 namespace CloudBackupClient.Tests.UnitTests
 {
-    [TestFixture]
     public class LocalClientFileCacheHandler_Test : CloudBackupTestBase
     {
         private string TempDirectory { get; set; }
 
         override protected string ConfigurationJson => $"{{\"LocalClientFileCacheConfig\": {{ \"TempCopyDirectory\": \"{this.TempDirectory}\", \"MaxCacheMB\": 1}} }}";
-        
-        
-        [OneTimeSetUp]
-        public void TestSetup()
+
+        public LocalClientFileCacheHandler_Test()
         {
             this.TempDirectory = @"G:\CloudBackupTestTemp";
 
-            if(Directory.Exists(this.TempDirectory))
+            if (Directory.Exists(this.TempDirectory))
             {
                 Directory.Delete(this.TempDirectory);
             }
 
             Directory.CreateDirectory(this.TempDirectory);
-
-            this.Initialize();
         }
 
-        [Test]
-        public void LocalFileCacheHandlerTest()
-        {
 
-        }
-
-        [OneTimeTearDown]
-        public void TestComplete()
+        override public void Dispose()
         {
-            if(Directory.Exists(this.TempDirectory))
+            if (Directory.Exists(this.TempDirectory))
             {
                 Directory.Delete(this.TempDirectory);
             }
