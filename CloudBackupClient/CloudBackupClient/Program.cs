@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using CloudBackupClient.ClientDBHandlers;
 using CloudBackupClient.ClientFileCacheHandlers;
+using System.IO.Abstractions;
 
 namespace CloudBackupClient
 {
@@ -24,6 +25,7 @@ namespace CloudBackupClient
                                                 .AddSingleton<ICloudBackupArchiveProvider, FileSystemBackupArchiveProvider>()
                                                 .AddSingleton<IClientDBHandler, SqliteDBHandler>()                                                
                                                 .AddSingleton<IClientFileCacheHandler, LocalClientFileCacheHandler>()
+                                                .AddSingleton<IFileSystem, FileSystem>()
                                                 .AddSingleton<BackupClient>()
                                                 .AddSingleton<IConfigurationRoot>(provider => appConfig)
                                                 .AddLogging(builder => builder.AddConsole())
