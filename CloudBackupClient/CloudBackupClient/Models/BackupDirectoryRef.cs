@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace CloudBackupClient.Models
@@ -12,7 +9,7 @@ namespace CloudBackupClient.Models
         [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
         public int DirectoryRefID { get; set; }
 
-        [ForeignKey("BackupRun")]
+        [ForeignKey(nameof(BackupRun))]
         public int BackupRunID { get; set; }
 
         public string DirectoryFullFileName { get; set; }

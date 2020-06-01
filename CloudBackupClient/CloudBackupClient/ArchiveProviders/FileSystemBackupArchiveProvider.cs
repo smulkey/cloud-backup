@@ -1,12 +1,11 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.IO.Abstractions;
-using System.Text;
-using CloudBackupClient.Models;
+﻿using CloudBackupClient.Models;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using System;
+using System.IO;
+using System.IO.Abstractions;
+using System.Threading.Tasks;
 
 namespace CloudBackupClient.ArchiveProviders
 {
@@ -35,9 +34,9 @@ namespace CloudBackupClient.ArchiveProviders
             {
                 throw new Exception("Base backup directory null or empty");
             }
-            else if (Directory.Exists(baseDir) == false)
+            else if (this.FileSystem.CheckFileExists(baseDir) == false)
             {
-                Directory.CreateDirectory(baseDir);
+                this.FileSystem.CreateDirectory(baseDir);                
             }
 
             this.baseBackupDir = baseDir;
@@ -45,11 +44,18 @@ namespace CloudBackupClient.ArchiveProviders
             Logger.LogInformation(String.Format("Configured FileSystemBackupArchiveProvider with base direcory: {0}", baseDir));
         }
 
-        public bool ArchiveFile(BackupRun backupRun, BackupRunFileRef fileRef, Stream cacheFileStream)
+        public async Task<bool> ArchiveFileAsync(BackupRun backupRun, BackupRunFileRef fileRef, Stream cacheFileStream)
         {
             Logger.LogDebug("Called FileSystemBackup.ArchiveFile");
 
             var archiveFileName = GetArchiveFileName(fileRef, backupRun);
+
+            //// TODO: Find way to archive empty directories
+            //if( this.FileSystem.CheckFileIsDirectory(archiveFileName) )
+            //{
+            //    return true;
+            //}
+
             var dirName = this.FileSystem.GetFileParentDirectoryName(archiveFileName);
 
             if (this.FileSystem.CheckFileExists(archiveFileName))
@@ -62,16 +68,16 @@ namespace CloudBackupClient.ArchiveProviders
             {
                 Logger.LogInformation(String.Format("Creating parent directory for archive entry: {0}", dirName));
 
-                this.FileSystem.CreateDirectory(archiveFileName);
+                this.FileSystem.CreateDirectory(dirName);                
             }
 
             if (cacheFileStream != null)
             {
                 Logger.LogInformation(String.Format("Creating archive entry for file: {0}", fileRef.FullFileName));
-
-                using (var outputFileStream = this.FileSystem.FileInfo.FromFileName(archiveFileName).OpenWrite())
+                
+                using (var outputFileStream = this.FileSystem.CreateFile(archiveFileName))
                 {
-                    cacheFileStream.CopyTo(outputFileStream);
+                    await cacheFileStream.CopyToAsync(outputFileStream);
                 }                
             }
 
@@ -80,7 +86,8 @@ namespace CloudBackupClient.ArchiveProviders
             return true;
         }
         
-        private string GetArchiveFileName(BackupRunFileRef backupRunFileRef, BackupRun backupRun) => String.Format("{0}{1}{2}{3}{4}",
+        //TODO Share for testing
+        public string GetArchiveFileName(BackupRunFileRef backupRunFileRef, BackupRun backupRun) => String.Format("{0}{1}{2}{3}{4}",
                                                                                                                     this.baseBackupDir,
                                                                                                                     Path.DirectorySeparatorChar,
                                                                                                                     backupRun.BackupRunID,

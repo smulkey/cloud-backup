@@ -1,15 +1,14 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-using Microsoft.Data.Sqlite;
-using System.Linq;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.EntityFrameworkCore;
-using CloudBackupClient.Data;
-using Microsoft.Extensions.Logging;
+﻿using CloudBackupClient.Data;
 using CloudBackupClient.Models;
-using System.Data.Common;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using System;
+using System.Collections.Generic;
+using System.Data.Common;
+using System.Linq;
 
 namespace CloudBackupClient.ClientDBHandlers
 {
@@ -25,7 +24,7 @@ namespace CloudBackupClient.ClientDBHandlers
         }
 
         public void Initialize (IServiceProvider serviceProvider)
-        {
+        {  
             this.serviceProvider = serviceProvider;           
         
             //TODO Add validation
@@ -49,6 +48,13 @@ namespace CloudBackupClient.ClientDBHandlers
             var openBackupRuns = this.dbContext.BackupRuns.Where(b => b.BackupRunCompleted == false).ToList<BackupRun>();
 
             this.Logger.LogInformation($"Returning BackupRun set with {openBackupRuns.Count} entries");
+
+            //SQLite doesn't really support foreign keys so we have to manually re-hydrate
+            foreach (var backupRun in openBackupRuns)
+            {
+                backupRun.BackupFileRefs = dbContext.Set<BackupRunFileRef>().Where(r => r.BackupRunID == backupRun.BackupRunID).ToList<BackupRunFileRef>();
+                backupRun.BackupDirectories = dbContext.Set<BackupDirectoryRef>().Where(d => d.BackupRunID == backupRun.BackupRunID).ToList<BackupDirectoryRef>();
+            }
 
             return openBackupRuns;
         }

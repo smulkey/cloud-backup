@@ -1,8 +1,7 @@
 ﻿using CloudBackupClient.Models;
-using System;
 using System.Collections.Generic;
+using System.IO;
 using System.IO.Abstractions;
-using System.Text;
 
 namespace CloudBackupClient
 {
@@ -18,12 +17,44 @@ namespace CloudBackupClient
 
         public static bool CheckFileExists(this IFileSystem fileSystem, string fileName) => fileSystem.FileInfo.FromFileName(fileName).Exists;
 
+        public static bool CheckFileIsDirectory(this IFileSystem fileSystem, string directoryPath) => fileSystem.DirectoryInfo.FromDirectoryName(directoryPath).Exists;
+        
+        public static IList<string> GetChildDirectories(this IFileSystem fileSystem, string directoryPath)
+        {
+            var childDirs = new List<string>();
+          
+            foreach (var dirInfo in fileSystem.DirectoryInfo.FromDirectoryName(directoryPath).GetDirectories())
+            {
+                childDirs.Add(dirInfo.FullName);
+            }
+
+            return childDirs;
+        }
+
+        public static IList<string> GetFilesInDirectory(this IFileSystem fileSystem, string directoryPath)
+        {
+            var childFiles = new List<string>();
+                        
+            foreach (var fileInfo in fileSystem.DirectoryInfo.FromDirectoryName(directoryPath).GetFiles())
+            {
+                childFiles.Add(fileInfo.FullName);
+            }
+
+            return childFiles;
+        }
+
         public static void DeleteFile(this IFileSystem fileSystem, string fileName) => fileSystem.FileInfo.FromFileName(fileName).Delete();
 
         public static void CopyFileRef(this IFileSystem fileSystem, BackupRunFileRef fileRef, string targetFile) => fileSystem.File.Copy(fileRef.FullFileName, targetFile);
 
         public static long GetFileLength(this IFileSystem fileSystem, string fullFileName) => fileSystem.FileInfo.FromFileName(fullFileName).Length;
 
-        
+        public static Stream  CreateFile(this IFileSystem fileSystem, string fullFileName) => fileSystem.File.Create(fullFileName);
+
+        public static Stream OpenRead(this IFileSystem fileSystem, string fullFileName) => fileSystem.File.OpenRead(fullFileName);
+
+        public static Stream OpenWrite(this IFileSystem fileSystem, string fullFileName) => fileSystem.File.OpenWrite(fullFileName);
+
+
     }
 }

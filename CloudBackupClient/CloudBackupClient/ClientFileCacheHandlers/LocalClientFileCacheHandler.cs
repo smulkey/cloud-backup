@@ -1,16 +1,10 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.IO.Abstractions;
-using System.IO.Enumeration;
-using System.Linq;
-using System.Net;
-using System.Text;
-using CloudBackupClient.Models;
+﻿using CloudBackupClient.Models;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging;
+using System;
+using System.IO;
+using System.IO.Abstractions;
 
 namespace CloudBackupClient.ClientFileCacheHandlers
 {
@@ -48,7 +42,7 @@ namespace CloudBackupClient.ClientFileCacheHandlers
             {
                 Logger.LogInformation(String.Format("Creating new backup cache directory at {0}", backupCacheFullDir));
 
-                this.FileSystem.CreateDirectory(backupCacheFullDir);
+                this.FileSystem.CreateDirectory(backupCacheFullDir);                
             }
             
             this.Logger.LogInformation("Copying scanned files to backup cache");
@@ -78,7 +72,7 @@ namespace CloudBackupClient.ClientFileCacheHandlers
                     {
                         Logger.LogInformation(String.Format("Creating backup cache directory: {0}", cacheRef));
 
-                        this.FileSystem.CreateDirectory(cacheRef);
+                        this.FileSystem.CreateDirectory(cacheRef);                        
                     }
                     else
                     {
@@ -94,7 +88,7 @@ namespace CloudBackupClient.ClientFileCacheHandlers
 
                             if (this.FileSystem.CheckFileExists(dirPath) == false)
                             {
-                                this.FileSystem.CreateDirectory(dirPath);
+                                this.FileSystem.CreateDirectory(dirPath);                                
                             }
                         }    
 
@@ -142,7 +136,7 @@ namespace CloudBackupClient.ClientFileCacheHandlers
 
             Logger.LogDebug("Returning cache file after archive: {0}", cacheFileName);
 
-            return this.FileSystem.FileInfo.FromFileName(cacheFileName).OpenRead();            
+            return this.FileSystem.OpenRead(cacheFileName);
         }
 
         public void CompleteFileArchive(BackupRunFileRef backupRunFileRef, BackupRun backupRun)

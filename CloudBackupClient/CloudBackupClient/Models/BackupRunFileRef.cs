@@ -1,8 +1,6 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
-using System.Text;
 
 namespace CloudBackupClient.Models
 {
@@ -12,7 +10,7 @@ namespace CloudBackupClient.Models
         [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
         public int BackupRunFileRefID { get; set;  }
 
-        [ForeignKey("BackupRun")]
+        [ForeignKey(nameof(BackupRun))]
         public int BackupRunID { get; set; }
 
         public String FullFileName { get; set; }

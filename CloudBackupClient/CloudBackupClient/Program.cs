@@ -1,11 +1,12 @@
-﻿using System;
-using System.Collections.Generic;
-using CloudBackupClient.ArchiveProviders;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
+﻿using CloudBackupClient.ArchiveProviders;
+using CloudBackupClient.BackupClientController;
+using CloudBackupClient.BackupRunController;
 using CloudBackupClient.ClientDBHandlers;
 using CloudBackupClient.ClientFileCacheHandlers;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using System;
 using System.IO.Abstractions;
 
 namespace CloudBackupClient
@@ -13,7 +14,7 @@ namespace CloudBackupClient
     public class Program
     {   
 
-        static void Main(string[] args)
+        static void Main()
         {
             try
             {
@@ -26,7 +27,8 @@ namespace CloudBackupClient
                                                 .AddSingleton<IClientDBHandler, SqliteDBHandler>()                                                
                                                 .AddSingleton<IClientFileCacheHandler, LocalClientFileCacheHandler>()
                                                 .AddSingleton<IFileSystem, FileSystem>()
-                                                .AddSingleton<BackupClient>()
+                                                .AddSingleton<IBackupRunControl, BackupRunControl>()
+                                                .AddSingleton<IBackupFileScanner, BackupFileScanner>()                                                
                                                 .AddSingleton<IConfigurationRoot>(provider => appConfig)
                                                 .AddLogging(builder => builder.AddConsole())
                                                 .BuildServiceProvider();
@@ -35,8 +37,12 @@ namespace CloudBackupClient
                 serviceProvider.GetService<ICloudBackupArchiveProvider>().Initialize(serviceProvider);                
                 serviceProvider.GetService<IClientDBHandler>().Initialize(serviceProvider);
                 serviceProvider.GetService<IClientFileCacheHandler>().Initialize(serviceProvider);
+                serviceProvider.GetService<IBackupRunControl>().Initialize(serviceProvider);
+                serviceProvider.GetService<IBackupFileScanner>().Initialize(serviceProvider);
 
-                serviceProvider.GetService<BackupClient>().Start();
+                var backupClient = new BackupClient(serviceProvider);
+
+                backupClient.Start().GetAwaiter().GetResult();
 
             } catch(Exception ex)
             {                
@@ -44,8 +50,5 @@ namespace CloudBackupClient
                 Console.WriteLine(ex.StackTrace);
             }
         }
-
-
-        
     }
 }

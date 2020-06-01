@@ -30,8 +30,4 @@
     <ProjectReference Include="..\CloudBackupClient\CloudBackupClient.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Folder Include="Fixtures\" />
-  </ItemGroup>
-
 </Project>
