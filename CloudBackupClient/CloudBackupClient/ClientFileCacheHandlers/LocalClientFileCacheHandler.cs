@@ -144,8 +144,17 @@ namespace CloudBackupClient.ClientFileCacheHandlers
             var cacheFileName = GetCacheEntryForFileRef(backupRunFileRef, backupRun);
 
             Logger.LogDebug("Deleting cache file after archive: {0}", cacheFileName);
+                       
+            var fileInfo = this.FileSystem.FileInfo.FromFileName(cacheFileName);
+            if (fileInfo.IsReadOnly)
+            {
+                // Clear RO flag before delete
+                this.FileSystem.File.SetAttributes(cacheFileName, new FileAttributes());
+            }
 
             this.FileSystem.DeleteFile(cacheFileName);
+            
+            Logger.LogInformation($"Deleted cache file {cacheFileName}");            
         }
 
         public void Dispose()

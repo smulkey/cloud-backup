@@ -43,7 +43,7 @@ namespace CloudBackupClient
             return childFiles;
         }
 
-        public static void DeleteFile(this IFileSystem fileSystem, string fileName) => fileSystem.FileInfo.FromFileName(fileName).Delete();
+        public static void DeleteFile(this IFileSystem fileSystem, string fileName) => fileSystem.File.Delete(fileName);
 
         public static void CopyFileRef(this IFileSystem fileSystem, BackupRunFileRef fileRef, string targetFile) => fileSystem.File.Copy(fileRef.FullFileName, targetFile);
 
