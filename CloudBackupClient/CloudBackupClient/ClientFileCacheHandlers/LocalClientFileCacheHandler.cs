@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using System;
 using System.IO;
 using System.IO.Abstractions;
+using System.Threading.Tasks;
 
 namespace CloudBackupClient.ClientFileCacheHandlers
 {
@@ -15,11 +16,7 @@ namespace CloudBackupClient.ClientFileCacheHandlers
 
         private readonly ILogger<LocalClientFileCacheHandler> logger;
 
-        private const string LocalCacheConfigSettingsSectionName = "LocalClientFileCacheConfig";
-
-        private const string MaxCacheMBSettingKey = "MaxCacheMBSetting";
-
-        private const string TempCopyDirectoryKey = "TempCopyDirectory";
+        
 
         public LocalClientFileCacheHandler(IConfiguration configuration,
                                            IFileSystem fileSystem,
@@ -41,25 +38,37 @@ namespace CloudBackupClient.ClientFileCacheHandlers
 
             currentBytes = 0;
 
+            var backupCacheSettings = this.configuration.GetSection(BackupClientConfigurationKeys.LocalCacheConfigSettingsSectionName);
+
             string backupCacheFullDir = this.GetCacheDirectory(backupRun);
 
-            if (this.fileSystem.CheckFileExists(backupCacheFullDir) == false)
+            if (this.fileSystem.DirectoryInfo.FromDirectoryName(backupCacheFullDir).Exists == false)
             {
                 this.logger.LogInformation(String.Format("Creating new backup cache directory at {0}", backupCacheFullDir));
 
                 this.fileSystem.CreateDirectory(backupCacheFullDir);
             }
+            else
+            {                   
+                int totalCacheGB = int.Parse(backupCacheSettings[BackupClientConfigurationKeys.MaxTotalCacheSizeGB]);
+                long totalDirectorySizeBytes = GetDirectorySize(backupCacheFullDir);
+
+                if (totalDirectorySizeBytes / 1000 / 1000 >= totalCacheGB)
+                {
+                    this.logger.LogInformation("Halting cache file copy due to max bytes in cache exceded");
+                    return;
+                }                
+            }
 
             this.logger.LogInformation("Copying scanned files to backup cache");
-
-            var backupCacheSettings = this.configuration.GetSection(LocalCacheConfigSettingsSectionName);
-            int maxCacheMB = int.Parse(backupCacheSettings[MaxCacheMBSettingKey]);
+                        
+            int maxCacheMB = int.Parse(backupCacheSettings[BackupClientConfigurationKeys.MaxCachePerRunMB]);
 
             foreach (var fileRef in backupRun.BackupFileRefs)
             {
                 if (currentBytes > maxCacheMB * 1000000)
                 {
-                    this.logger.LogInformation("Halting cache file copy due to max copy bytes exceded");
+                    this.logger.LogInformation("Halting cache file copy due to max copy bytes per run exceded");
                     break;
                 }
 
@@ -190,28 +199,33 @@ namespace CloudBackupClient.ClientFileCacheHandlers
             this.logger.LogInformation($"Deleted cache file {cacheFileName}");
         }
 
-        public void Dispose()
-        {
-            //noop
-        }
-
         private string GetCacheDirectory(BackupRun backupRun) => String.Format("{0}{1}BackupRun-{2}",
-                                                                                                this.configuration.GetSection(LocalCacheConfigSettingsSectionName)[TempCopyDirectoryKey],
+                                                                                                this.configuration.GetSection(BackupClientConfigurationKeys.LocalCacheConfigSettingsSectionName)[BackupClientConfigurationKeys.TempCopyDirectory],
                                                                                                 Path.DirectorySeparatorChar,
                                                                                                 backupRun.BackupRunID);
 
         //TODO Find better way to share this with tests
         public string GetCacheEntryForFileRef(BackupRunFileRef fileRef, BackupRun backupRun) => String.Format("{0}{1}",
                                                                                                 this.GetCacheDirectory(backupRun),
-                                                                                                fileRef.FullFileName.Substring(fileRef.FullFileName.IndexOf(":") + 1));    
+                                                                                                fileRef.FullFileName.Substring(fileRef.FullFileName.IndexOf(":") + 1));
 
-        //private IConfiguration GetConfiguration()
-        //{
-        //    Mock<IConfiguration> configuration = new Mock<IConfiguration>();
+        
+        private long GetDirectorySize(string directoryName)
+        {
+            var directoryInfo = this.fileSystem.DirectoryInfo.FromDirectoryName(directoryName);
+            long sizeBytes = 0;
 
-        //    return configuration.
-                
-        //        ;
-        //}
+            foreach (var file in directoryInfo.GetFiles())
+            {
+                sizeBytes += file.Length;
+            }
+
+            foreach (var childDirectory in directoryInfo.GetDirectories())
+            {
+                GetDirectorySize(childDirectory.FullName);
+            }
+
+            return sizeBytes;
+        }
     }
 }

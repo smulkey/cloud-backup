@@ -1,6 +1,5 @@
 ﻿using CloudBackupClient.Models;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System;
 using System.IO;
@@ -11,7 +10,7 @@ namespace CloudBackupClient.ArchiveProviders
 {
     public class FileSystemBackupArchiveProvider : ICloudBackupArchiveProvider
     {
-        private string baseBackupDir;
+        private readonly string baseBackupDir;
                 
         private readonly IFileSystem fileSystem;
 

@@ -5,7 +5,6 @@ using CloudBackupClient.ClientDBHandlers;
 using CloudBackupClient.ClientFileCacheHandlers;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using Serilog;
 using System;
 using System.IO.Abstractions;
@@ -27,6 +26,7 @@ namespace CloudBackupClient
 
                 Log.Logger = new LoggerConfiguration().ReadFrom.Configuration(appConfig).CreateLogger();
 
+                serviceProvider.AddSingleton<IConfiguration>(appConfig);
                 serviceProvider.AddLogging(builder => builder.AddSerilog(Log.Logger, dispose: true));
 
                 serviceProvider.AddSingleton<ICloudBackupArchiveProvider, FileSystemBackupArchiveProvider>();

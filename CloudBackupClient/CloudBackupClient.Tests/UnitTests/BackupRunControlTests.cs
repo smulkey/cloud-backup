@@ -4,8 +4,6 @@ using CloudBackupClient.BackupRunController;
 using CloudBackupClient.ClientDBHandlers;
 using CloudBackupClient.ClientFileCacheHandlers;
 using CloudBackupClient.Models;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.VisualBasic;
 using Moq;
 using System;
 using System.Collections.Generic;

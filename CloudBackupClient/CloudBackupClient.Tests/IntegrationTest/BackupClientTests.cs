@@ -73,12 +73,13 @@ namespace CloudBackupClient.Tests.IntegrationTests
                 },
                 ["LocalClientFileCacheConfig"] = new List<Dictionary<string, string>>
                 {
-                    new Dictionary<string, string> { ["MaxCacheMBSetting"] = "1" },
-                    new Dictionary<string, string> { ["TempCopyDirectory"] = @"C:\\BackupCache\" }
+                    new Dictionary<string, string> { ["MaxCachePerRunMB"] = "1" },
+                    new Dictionary<string, string> { ["MaxTotalCacheSizeGB"] = "1" },
+                    new Dictionary<string, string> { ["TempCopyDirectory"] = @"C:\\BackupCache" }
                 },
                 ["FileSystemArchiveTestConfig"] = new List<Dictionary<string, string>>
                 {
-                    new Dictionary<string, string> { ["BaseBackupDir"] = @"\\Test\BackupArchive\" }
+                    new Dictionary<string, string> { ["BaseBackupDir"] = @"\\Test\BackupArchive" }
                 }
             };
 

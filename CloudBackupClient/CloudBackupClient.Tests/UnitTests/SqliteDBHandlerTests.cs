@@ -1,11 +1,9 @@
 ﻿using CloudBackupClient.ClientDBHandlers;
 using CloudBackupClient.Models;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Moq;
 using System;
 using System.Collections.Generic;
-using System.IO.Abstractions.TestingHelpers;
 using System.Linq;
 using Xunit;
 
