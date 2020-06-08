@@ -1,6 +1,8 @@
 ﻿using CloudBackupClient.BackupRunController;
 using CloudBackupClient.Models;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Moq;
 using System;
 using System.Collections.Generic;
 using System.IO.Abstractions.TestingHelpers;
@@ -12,13 +14,14 @@ namespace CloudBackupClient.Tests.UnitTests
     {
         public BackupFileScannerTests()
         {
-
         }
         
         [Fact]
         public void PopulateFilesForBackupRunTest()
         {
             // Given            
+            var backupFileScanner = new BackupFileScanner(this.MockFileSystem, new Mock<ILogger<BackupFileScanner>>().Object);
+
             var backupRun = new BackupRun() 
                                 { 
                                     BackupRunID = 1,
@@ -57,7 +60,7 @@ namespace CloudBackupClient.Tests.UnitTests
             }
                                     
             // When
-            this.BackupFileScanner.PopulateFilesForBackupRun(backupRun);
+            backupFileScanner.PopulateFilesForBackupRun(backupRun);
 
             // Then
             Assert.Equal(backupDirs.Length + backupFiles.Length, backupRun.BackupFileRefs.Count);
@@ -103,6 +106,8 @@ namespace CloudBackupClient.Tests.UnitTests
         public void BackupRunFileCollectorMissingDirectoryTest()
         {
             // Given
+            var backupFileScanner = new BackupFileScanner(this.MockFileSystem, new Mock<ILogger<BackupFileScanner>>().Object);
+
             var backupRun = new BackupRun()
             {
                 BackupRunID = 1,
@@ -114,7 +119,7 @@ namespace CloudBackupClient.Tests.UnitTests
             };
 
             // When / Then            
-            Assert.Throws<Exception>(() => this.BackupFileScanner.PopulateFilesForBackupRun(backupRun))
+            Assert.Throws<Exception>(() => backupFileScanner.PopulateFilesForBackupRun(backupRun))
                                             .Message.Equals("No root directory provided");
         }
 
@@ -122,6 +127,8 @@ namespace CloudBackupClient.Tests.UnitTests
         public void BackupRunFileCollectorEmptyDirectoryTest()
         {
             // Given
+            var backupFileScanner = new BackupFileScanner(this.MockFileSystem, new Mock<ILogger<BackupFileScanner>>().Object);
+
             var backupRun = new BackupRun()
                                 {
                                     BackupRunID = 1,
@@ -146,12 +153,8 @@ namespace CloudBackupClient.Tests.UnitTests
             backupRun.BackupFileRefs = new List<BackupRunFileRef>();
 
             // When / Then            
-            Assert.Throws<Exception>(() => this.BackupFileScanner.PopulateFilesForBackupRun(backupRun))
+            Assert.Throws<Exception>(() => backupFileScanner.PopulateFilesForBackupRun(backupRun))
                                                                     .Message.Equals($"Root directory {backupDirs[1]} doesn't exist");
         }
-
-        protected override IBackupFileScanner BackupFileScannerTemplate => new BackupFileScanner();
-                
-        private IBackupFileScanner BackupFileScanner => this.ServiceProvider.GetService<IBackupFileScanner>();
     }    
 }

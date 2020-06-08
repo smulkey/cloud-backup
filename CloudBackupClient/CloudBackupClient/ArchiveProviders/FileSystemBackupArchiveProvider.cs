@@ -12,76 +12,80 @@ namespace CloudBackupClient.ArchiveProviders
     public class FileSystemBackupArchiveProvider : ICloudBackupArchiveProvider
     {
         private string baseBackupDir;
-        private IServiceProvider serviceProvider;
+                
+        private readonly IFileSystem fileSystem;
+
+        private readonly ILogger<FileSystemBackupArchiveProvider> logger;
+
+        private const string BaseBackupDirKey = "BaseBackupDir";
+
+        private const string FileSystemArchiveTestConfigKey = "FileSystemArchiveTestConfig";
+
+        public FileSystemBackupArchiveProvider(IConfiguration configuration,
+                                               IFileSystem fileSystem,
+                                               ILogger<FileSystemBackupArchiveProvider> logger)
+        {
+            this.fileSystem = fileSystem;
+            this.logger = logger;
         
-        public FileSystemBackupArchiveProvider()
-        {
+            var configSection = configuration.GetSection(FileSystemArchiveTestConfigKey);
 
-        }
+            this.logger.LogDebug("Called FileSystemBackupArchiveProvider.Initialize");
 
-        public void Initialize(IServiceProvider serviceProvider)
-        {
-            this.serviceProvider = serviceProvider;
-
-            var appConfigRoot = this.serviceProvider.GetService<IConfigurationRoot>();
-            var configSection = appConfigRoot.GetSection("FileSystemArchiveTestConfig");
-
-            Logger.LogDebug("Called FileSystemBackupArchiveProvider.Initialize");
-
-            var baseDir = configSection.GetSection("BaseBackupDir").Value;
+            var baseDir = configSection[BaseBackupDirKey];
 
             if (String.IsNullOrWhiteSpace(baseDir))
             {
                 throw new Exception("Base backup directory null or empty");
             }
-            else if (this.FileSystem.CheckFileExists(baseDir) == false)
+            else if (this.fileSystem.CheckFileExists(baseDir) == false)
             {
-                this.FileSystem.CreateDirectory(baseDir);                
+                this.fileSystem.CreateDirectory(baseDir);                
             }
 
             this.baseBackupDir = baseDir;
 
-            Logger.LogInformation(String.Format("Configured FileSystemBackupArchiveProvider with base direcory: {0}", baseDir));
+            this.logger.LogInformation(String.Format("Configured FileSystemBackupArchiveProvider with base direcory: {0}", baseDir));
         }
 
         public async Task<bool> ArchiveFileAsync(BackupRun backupRun, BackupRunFileRef fileRef, Stream cacheFileStream)
         {
-            Logger.LogDebug("Called FileSystemBackup.ArchiveFile");
+            this.logger.LogDebug("Called FileSystemBackup.ArchiveFile");
 
             var archiveFileName = GetArchiveFileName(fileRef, backupRun);
 
             //// TODO: Find way to archive empty directories
-            //if( this.FileSystem.CheckFileIsDirectory(archiveFileName) )
+            //if( this.fileSystem.CheckFileIsDirectory(archiveFileName) )
             //{
             //    return true;
             //}
 
-            var dirName = this.FileSystem.GetFileParentDirectoryName(archiveFileName);
+            var dirName = this.fileSystem.GetFileParentDirectoryName(archiveFileName);
 
-            if (this.FileSystem.CheckFileExists(archiveFileName))
+            if (this.fileSystem.CheckFileExists(archiveFileName))
             {
                 //TODO Check with checksum to potentially skip copy instead of automatically deleting  
 
-                this.FileSystem.DeleteFile(archiveFileName);
+                this.fileSystem.DeleteFile(archiveFileName);
             }
-            else if (this.FileSystem.CheckFileExists(dirName) == false)
+            else if (this.fileSystem.CheckFileExists(dirName) == false)
             {
-                Logger.LogInformation(String.Format("Creating parent directory for archive entry: {0}", dirName));
+                this.logger.LogInformation(String.Format("Creating parent directory for archive entry: {0}", dirName));
 
-                this.FileSystem.CreateDirectory(dirName);                
+                this.fileSystem.CreateDirectory(dirName);                
             }
 
             if (cacheFileStream != null)
             {
-                Logger.LogInformation(String.Format("Creating archive entry for file: {0}", fileRef.FullFileName));
+                this.logger.LogInformation(String.Format("Creating archive entry for file: {0}", fileRef.FullFileName));
                 
-                using (var outputFileStream = this.FileSystem.CreateFile(archiveFileName))
+                using (var outputFileStream = this.fileSystem.CreateFile(archiveFileName))
                 {
                     await cacheFileStream.CopyToAsync(outputFileStream);
                 }                
             }
 
-            Logger.LogInformation(String.Format("Completed archive copy for entry: {0}", fileRef.FullFileName));
+            this.logger.LogInformation(String.Format("Completed archive copy for entry: {0}", fileRef.FullFileName));
 
             return true;
         }
@@ -92,15 +96,6 @@ namespace CloudBackupClient.ArchiveProviders
                                                                                                                     Path.DirectorySeparatorChar,
                                                                                                                     backupRun.BackupRunID,
                                                                                                                     Path.DirectorySeparatorChar,
-                                                                                                                    backupRunFileRef.FullFileName.Substring(3));
-
-        public void Dispose() 
-        {
-            //no op
-        }
-
-        private IFileSystem FileSystem => this.serviceProvider.GetService<IFileSystem>();
-
-        private ILogger Logger => this.serviceProvider.GetService<ILogger<FileSystemBackupArchiveProvider>>();
+                                                                                                                    backupRunFileRef.FullFileName.Substring(3));        
     }
 }

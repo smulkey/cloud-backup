@@ -4,9 +4,8 @@ using System.Threading.Tasks;
 
 namespace CloudBackupClient.ArchiveProviders
 {
-    public interface ICloudBackupArchiveProvider : ICloudBackupService
+    public interface ICloudBackupArchiveProvider
     {
-        public Task<bool> ArchiveFileAsync(BackupRun backupRun, BackupRunFileRef fileRef, Stream cacheFileStream);
-        
+        public Task<bool> ArchiveFileAsync(BackupRun backupRun, BackupRunFileRef fileRef, Stream cacheFileStream);        
     }
 }

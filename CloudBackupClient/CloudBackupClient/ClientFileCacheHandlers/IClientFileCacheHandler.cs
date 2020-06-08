@@ -3,7 +3,7 @@ using System.IO;
 
 namespace CloudBackupClient.ClientFileCacheHandlers
 {
-    public interface IClientFileCacheHandler : ICloudBackupService
+    public interface IClientFileCacheHandler
     {
         void InitializeBackupRun(BackupRun backupRun);
 

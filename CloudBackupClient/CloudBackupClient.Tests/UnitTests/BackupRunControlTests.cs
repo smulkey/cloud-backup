@@ -1,7 +1,11 @@
-﻿using CloudBackupClient.BackupClientController;
+﻿using CloudBackupClient.ArchiveProviders;
+using CloudBackupClient.BackupClientController;
+using CloudBackupClient.BackupRunController;
 using CloudBackupClient.ClientDBHandlers;
+using CloudBackupClient.ClientFileCacheHandlers;
 using CloudBackupClient.Models;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.VisualBasic;
 using Moq;
 using System;
 using System.Collections.Generic;
@@ -10,9 +14,7 @@ using Xunit;
 namespace CloudBackupClient.Tests.UnitTests
 {
     public class BackupRunControlTests : CloudBackupTestBase
-    {        
-        protected override string ConfigurationJson => $"{{\"BackupSettings\": {{\"BackupClientID\": \"A3B078F9-D348-4483-8FA3-FC0D5BD90DAE\",\"BackupDirectories\": \"{TestBackupDirectory}}}\",\"RunTimeLimitSeconds\": 3600 }}}}";
-
+    {   
         private readonly string TestBackupDirectory = @"C:\\TestBackup";
 
         private readonly Mock<IClientDBHandler> mockDBHandler = new Mock<IClientDBHandler>();
@@ -26,6 +28,8 @@ namespace CloudBackupClient.Tests.UnitTests
         public void GetNextBackupRunNoActiveRunsTest()
         {
             // Given
+            var backupRunControl = CreateTestBackupRunControl();
+
             this.mockDBHandler.Setup(mock => mock.GetOpenBackupRuns())
                 .Returns(new List<BackupRun>());
 
@@ -34,7 +38,7 @@ namespace CloudBackupClient.Tests.UnitTests
             this.MockFileSystem.AddDirectory(this.TestBackupDirectory);
             
             // When
-            var backupRun = this.BackupRunControl.GetNextBackupRun();
+            var backupRun = backupRunControl.GetNextBackupRun();
 
             // Then
             Assert.NotNull(backupRun);
@@ -45,6 +49,8 @@ namespace CloudBackupClient.Tests.UnitTests
         public void GetNextBackupRunExistingRunTest()
         {
             // Given
+            var backupRunControl = CreateTestBackupRunControl();
+
             var backupRunId = 99;
 
             this.mockDBHandler.Setup(mock => mock.GetOpenBackupRuns())
@@ -58,7 +64,7 @@ namespace CloudBackupClient.Tests.UnitTests
                 });
                         
             // When
-            var backupRun = this.BackupRunControl.GetNextBackupRun();
+            var backupRun = backupRunControl.GetNextBackupRun();
 
             // Then
             Assert.NotNull(backupRun);
@@ -69,6 +75,8 @@ namespace CloudBackupClient.Tests.UnitTests
         public void GetNextBackupRunMultipoleExistingTest()
         {
             // Given
+            var backupRunControl = CreateTestBackupRunControl();
+
             this.mockDBHandler.Setup(mock => mock.GetOpenBackupRuns())
                 .Returns(new List<BackupRun>()
                 {
@@ -85,15 +93,30 @@ namespace CloudBackupClient.Tests.UnitTests
                 }); ;
 
             // When / Then
-            Assert.Throws<Exception>(() => this.BackupRunControl.GetNextBackupRun())
+            Assert.Throws<Exception>(() => backupRunControl.GetNextBackupRun())
                 .Message.Equals("More than one open backup");
         }
-        
-        protected override IClientDBHandler ClientDBHandlerTemplate => this.mockDBHandler.Object;
 
-        protected override IBackupRunControl BackupRunControlTemplate => new BackupRunControl();
+        private IBackupRunControl CreateTestBackupRunControl()
+        {
+            var config = new Dictionary<string, List<Dictionary<string, string>>>
+            {
+                ["BackupSettings"] = new List<Dictionary<string, string>>
+                {
+                    new Dictionary<string, string> { ["BackupClientID"] = "678385F0-AB93-434A-989D-9CD2649A457E" },
+                    new Dictionary<string, string> { ["BackupDirectories"] = @"C:\\TestBackup" },
+                    new Dictionary<string, string> { ["RunTimeLimitSeconds"] = "3600" },
+                }
+            };
 
-        private IBackupRunControl BackupRunControl => this.ServiceProvider.GetService<IBackupRunControl>();
+            return new BackupRunControl(new Mock<IBackupFileScanner>().Object,
+                                        this.mockDBHandler.Object, 
+                                        new Mock<IClientFileCacheHandler>().Object, 
+                                        new Mock<ICloudBackupArchiveProvider>().Object, 
+                                        GenerateConfiguration(config), 
+                                        this.MockFileSystem, 
+                                        new Mock<Microsoft.Extensions.Logging.ILogger<BackupRunControl>>().Object);
+        }
     }    
 
 }

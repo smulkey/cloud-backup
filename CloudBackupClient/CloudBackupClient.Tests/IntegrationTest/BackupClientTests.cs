@@ -3,9 +3,13 @@ using CloudBackupClient.BackupClientController;
 using CloudBackupClient.BackupRunController;
 using CloudBackupClient.ClientDBHandlers;
 using CloudBackupClient.ClientFileCacheHandlers;
+using Microsoft.Extensions.Logging;
+using Moq;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions.TestingHelpers;
+using System.Threading.Tasks;
 using Xunit;
 
 namespace CloudBackupClient.Tests.IntegrationTests
@@ -15,33 +19,15 @@ namespace CloudBackupClient.Tests.IntegrationTests
         private static readonly string TestBackupDirectory = @"C:\\TestBackup";
         private static readonly string TestBackupSubDirectory = "files";
         private static readonly string TestFileName = "testFile";
-                
-        protected override string ConfigurationJson => "{"+
-                                                            "\"BackupSettings\": {" +
-                                                            "\"BackupClientID\": \"678385F0-AB93-434A-989D-9CD2649A457E\"," +
-                                                            $"\"BackupDirectories\": \"{TestBackupDirectory}\"," +
-                                                            "\"RunTimeLimitSeconds\": 3600" +
-                                                           "}," +
-                                                           "\"LocalClientFileCacheConfig\": {" +
-                                                                "\"TempCopyDirectory\": \"C:\\\\BackupCache\"," +
-                                                                "\"MaxCacheMB\": 1" +
-                                                           "}," +
-                                                           "\"FileSystemArchiveTestConfig\": {" +
-                                                            "\"BaseBackupDir\": \"C:\\\\BackupArchive\"" +
-                                                           "}," +
-                                                           "\"ConnectionStrings\": {" +
-                                                                "\"SqliteConnString\": \"Data Source=:memory:\"" +
-                                                           "}" +
-                                                       "}";
-
+      
         public BackupClientTests()
         {   
         }
 
         [Fact]
-        public void BackupClientHappyPath()
+        public async Task BackupClientHappyPath()
         {
-            // Given        
+            // Given 
             var directoryInfo = this.MockFileSystem.Directory.CreateDirectory(TestBackupDirectory).CreateSubdirectory(TestBackupSubDirectory);
 
             var totalFiles = 3;
@@ -52,9 +38,9 @@ namespace CloudBackupClient.Tests.IntegrationTests
             }
 
             // When
-            var backupClient = new BackupClient(this.ServiceProvider);
+            var backupClient = CreateTestBackupClient();
 
-            backupClient.Start();
+            await backupClient.Start();
 
             // Then - No exception            
         }
@@ -63,23 +49,56 @@ namespace CloudBackupClient.Tests.IntegrationTests
         public void BackupClientThrowsException()
         {
             // Given - Root directory will be missing
-            
+
 
             // When / Then - throws exception
-            var backupClient = new BackupClient(this.ServiceProvider);
+            var backupClient = CreateTestBackupClient();
 
             Assert.ThrowsAsync<Exception>(() => backupClient.Start());
         }
+               
+        private BackupClient CreateTestBackupClient()
+        {
+            var configDef = new Dictionary<string, List<Dictionary<string, string>>>
+            {
+                ["BackupSettings"] = new List<Dictionary<string, string>>
+                {
+                    new Dictionary<string, string> { ["BackupClientID"] = this.TestBackupClientID.ToString() },
+                    new Dictionary<string, string> { ["BackupDirectories"] = @"C:\\TestBackup" },
+                    new Dictionary<string, string> { ["RunTimeLimitSeconds"] = "3600" },
+                },
+                ["ConnectionStrings"] = new List<Dictionary<string, string>>
+                {
+                    new Dictionary<string, string> { ["SqliteConnString"] = "Data Source=:memory:" }
+                },
+                ["LocalClientFileCacheConfig"] = new List<Dictionary<string, string>>
+                {
+                    new Dictionary<string, string> { ["MaxCacheMBSetting"] = "1" },
+                    new Dictionary<string, string> { ["TempCopyDirectory"] = @"C:\\BackupCache\" }
+                },
+                ["FileSystemArchiveTestConfig"] = new List<Dictionary<string, string>>
+                {
+                    new Dictionary<string, string> { ["BaseBackupDir"] = @"\\Test\BackupArchive\" }
+                }
+            };
 
-        protected override IClientDBHandler ClientDBHandlerTemplate => new SqliteDBHandler();
+            var configuration = GenerateConfiguration(configDef);
 
-        override protected ICloudBackupArchiveProvider CloudBackupArchiveProviderTemplate => new FileSystemBackupArchiveProvider();
+            var backupFileScanner = new BackupFileScanner(this.MockFileSystem, new Mock<ILogger<BackupFileScanner>>().Object);
+            var clientClientFileCacheHandler = new LocalClientFileCacheHandler(configuration, this.MockFileSystem, new Mock<ILogger<LocalClientFileCacheHandler>>().Object);
 
-        protected override IBackupRunControl BackupRunControlTemplate => new BackupRunControl();
+            var cloudBackupArchiveProvider = new FileSystemBackupArchiveProvider(configuration, this.MockFileSystem, new Mock<ILogger<FileSystemBackupArchiveProvider>>().Object);
+            var clientDBHandler = new SqliteDBHandler(configuration, new Mock<ILogger<SqliteDBHandler>>().Object);
 
-        protected override IClientFileCacheHandler ClientFileCacheHandlerTemplate => new LocalClientFileCacheHandler();
+            var backupRunControl = new BackupRunControl(backupFileScanner,
+                                                        clientDBHandler,
+                                                        clientClientFileCacheHandler,
+                                                        cloudBackupArchiveProvider,
+                                                        configuration,
+                                                        MockFileSystem,
+                                                        new Mock<ILogger<BackupRunControl>>().Object);
 
-        protected override IBackupFileScanner BackupFileScannerTemplate => new BackupFileScanner();
+            return new BackupClient(clientDBHandler, backupRunControl, configuration, new Mock<ILogger<BackupClient>>().Object);
+        }
     }
-
 }

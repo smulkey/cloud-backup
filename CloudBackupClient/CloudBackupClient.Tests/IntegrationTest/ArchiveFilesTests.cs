@@ -5,6 +5,10 @@ using CloudBackupClient.ClientDBHandlers;
 using CloudBackupClient.ClientFileCacheHandlers;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Moq;
+using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions.TestingHelpers;
 using Xunit;
@@ -16,34 +20,22 @@ namespace CloudBackupClient.Tests.IntegrationTests
         private static readonly string TestBackupDirectory = @"C:\\TestBackup";
         private static readonly string TestBackupSubDirectory = "files";
         private static readonly string TestFileName = "testFile";
+
+        private IConfiguration configuration;
                 
-        protected override string ConfigurationJson => "{"+
-                                                            "\"BackupSettings\": {" +
-                                                            "\"BackupClientID\": \"DBAEC131-E186-4C68-8E12-86548107D7E2\"," +
-                                                            $"\"BackupDirectories\": \"{TestBackupDirectory}\"," +
-                                                            "\"RunTimeLimitSeconds\": 3600" +
-                                                           "}," +
-                                                           "\"LocalClientFileCacheConfig\": {" +
-                                                                "\"TempCopyDirectory\": \"C:\\\\BackupCache\"," +
-                                                                "\"MaxCacheMB\": 1" +
-                                                           "}," +
-                                                           "\"FileSystemArchiveTestConfig\": {" +
-                                                            "\"BaseBackupDir\": \"C:\\\\BackupArchive\"" +
-                                                           "}," +
-                                                           "\"ConnectionStrings\": {" +
-                                                                "\"SqliteConnString\": \"Data Source=:memory:\"" +
-                                                                //"\"SqliteConnString\": \"Data Source=CloudBackupClientTestDB.sdf\""+
-                                                           "}" +
-                                                       "}";
+        private IClientDBHandler clientDBHandler;
+
+        private ICloudBackupArchiveProvider cloudBackupArchiveProvider;
 
         public ArchiveFileTests()
         {   
         }
-
+                
         [Fact]
         public async void ArchiveBackupRunHappyPath()
         {
-            // Given        
+            // Given       
+            var backupRunControl = CreateBackupRunControl(false);
             var directoryInfo = this.MockFileSystem.Directory.CreateDirectory(TestBackupDirectory).CreateSubdirectory(TestBackupSubDirectory);
 
             var totalFiles = 3;
@@ -51,15 +43,15 @@ namespace CloudBackupClient.Tests.IntegrationTests
             for (int i = 1; i <= totalFiles; i++)
             {
                 this.MockFileSystem.AddFile($"{directoryInfo.FullName}{Path.DirectorySeparatorChar}{TestFileName}{i}.txt", new MockFileData($"some content {i}"));
-            }            
-            
-            // When
-            var backupRun = this.BackupRunControl.GetNextBackupRun();
+            }
 
-            await this.BackupRunControl.ArchiveBackupRunAsync(backupRun);
+            // When
+            var backupRun = backupRunControl.GetNextBackupRun();
+
+            await backupRunControl.ArchiveBackupRunAsync(backupRun);
 
             // Then
-            var updatedBackupRun = this.ServiceProvider.GetService<IClientDBHandler>().GetBackupRun(1);
+            var updatedBackupRun = this.clientDBHandler.GetBackupRun(1);
 
             Assert.True(updatedBackupRun.BackupRunCompleted);
             Assert.False(updatedBackupRun.FailedWithException);
@@ -80,7 +72,7 @@ namespace CloudBackupClient.Tests.IntegrationTests
                 {
                     Assert.True(fileRef.CopiedToArchive);
 
-                    var backupFilePath = this.ConcreteFileArchiveProvider.GetArchiveFileName(fileRef, updatedBackupRun);
+                    var backupFilePath = ((FileSystemBackupArchiveProvider)this.cloudBackupArchiveProvider).GetArchiveFileName(fileRef, updatedBackupRun);
 
                     Assert.True(this.MockFileSystem.CheckFileExists(backupFilePath));
 
@@ -95,6 +87,7 @@ namespace CloudBackupClient.Tests.IntegrationTests
         public async void ArchiveBackupRunTimeout()
         {
             // Given
+            var backupRunControl = CreateBackupRunControl(true);
             var directoryInfo = this.MockFileSystem.Directory.CreateDirectory(TestBackupDirectory).CreateSubdirectory(TestBackupSubDirectory);
 
             var totalFiles = 3;
@@ -105,19 +98,12 @@ namespace CloudBackupClient.Tests.IntegrationTests
             }
 
             // When
-            var backupRun = this.BackupRunControl.GetNextBackupRun();
-            
-            var configurationRoot = this.ServiceProvider.GetService<IConfigurationRoot>();
-
-            var backupSettings = configurationRoot.GetSection(BackupClientConfigurationKeys.RootConfigurationSection);
-
-            //Will cause save loop to run once and then time out
-            backupSettings[BackupClientConfigurationKeys.RunTimeLimitSeconds] = "-10";
-
-            await this.BackupRunControl.ArchiveBackupRunAsync(backupRun);
+            var backupRun = backupRunControl.GetNextBackupRun();
+                                                
+            await backupRunControl.ArchiveBackupRunAsync(backupRun);
 
             // Then
-            var updatedBackupRun = this.ServiceProvider.GetService<IClientDBHandler>().GetBackupRun(1);
+            var updatedBackupRun = this.clientDBHandler.GetBackupRun(1);
 
             Assert.False(updatedBackupRun.BackupRunCompleted);
             Assert.False(updatedBackupRun.FailedWithException);
@@ -131,16 +117,18 @@ namespace CloudBackupClient.Tests.IntegrationTests
                 if (fileRef.CopiedToArchive)
                 {
                     completedCount += 1;
-                }               
+                }
             }
 
             Assert.Equal(1, completedCount);
         }
-
+                
         [Fact]
         public async void ArchiveBackupRunRestart()
         {
             // Given
+            var backupRunControl = CreateBackupRunControl(true);
+
             var directoryInfo = this.MockFileSystem.Directory.CreateDirectory(TestBackupDirectory).CreateSubdirectory(TestBackupSubDirectory);
 
             var totalFiles = 3;
@@ -151,28 +139,16 @@ namespace CloudBackupClient.Tests.IntegrationTests
             }
 
             // When
-            var firstBackupRun = this.BackupRunControl.GetNextBackupRun();
+            var firstBackupRun = backupRunControl.GetNextBackupRun();
+            
+            await backupRunControl.ArchiveBackupRunAsync(firstBackupRun);
 
-            var configurationRoot = this.ServiceProvider.GetService<IConfigurationRoot>();
-
-            var backupSettings = configurationRoot.GetSection(BackupClientConfigurationKeys.RootConfigurationSection);
-
-            //Will cause save loop to run once and then time out
-            backupSettings[BackupClientConfigurationKeys.RunTimeLimitSeconds] = "-10";
-
-            await this.BackupRunControl.ArchiveBackupRunAsync(firstBackupRun);
-
-            // TODO: This is super hacky, need a way to swap in test using actual DB file/instance
-            if (!this.ConfigurationJson.Contains("Data Source=:memory:"))
-            {
-                // Close and re-open database connection
-                this.ServiceProvider.GetService<IClientDBHandler>().Dispose();
-                this.ServiceProvider.GetService<IClientDBHandler>().Initialize(this.ServiceProvider);
-            }
+            // Emulate application restart
+            //CreateBackupRunControl();
 
             // Then - Get same open backup run
-            var secondBackupRun = this.BackupRunControl.GetNextBackupRun();
-            
+            var secondBackupRun = backupRunControl.GetNextBackupRun();
+
             Assert.Equal(firstBackupRun.BackupRunID, secondBackupRun.BackupRunID);
             Assert.NotNull(secondBackupRun.BackupDirectories);
             Assert.Equal(firstBackupRun.BackupDirectories.Count, secondBackupRun.BackupDirectories.Count);
@@ -180,19 +156,46 @@ namespace CloudBackupClient.Tests.IntegrationTests
             Assert.Equal(firstBackupRun.BackupFileRefs.Count, secondBackupRun.BackupFileRefs.Count);
         }
 
-        private FileSystemBackupArchiveProvider ConcreteFileArchiveProvider => (FileSystemBackupArchiveProvider)this.ServiceProvider.GetService<ICloudBackupArchiveProvider>();
+        private BackupRunControl CreateBackupRunControl(bool forceTimeout)
+        {
+            var configDef = new Dictionary<string, List<Dictionary<string, string>>>
+            {
+                ["BackupSettings"] = new List<Dictionary<string, string>>
+                {
+                    new Dictionary<string, string> { ["BackupClientID"] = this.TestBackupClientID.ToString() },
+                    new Dictionary<string, string> { ["BackupDirectories"] = @"C:\\TestBackup" },
+                    new Dictionary<string, string> { ["RunTimeLimitSeconds"] = forceTimeout ? "-1" : "3600" },
+                },
+                ["ConnectionStrings"] = new List<Dictionary<string, string>>
+                {
+                    new Dictionary<string, string> { ["SqliteConnString"] = "Data Source=:memory:" }
+                },
+                ["LocalClientFileCacheConfig"] = new List<Dictionary<string, string>>
+                {
+                    new Dictionary<string, string> { ["MaxCacheMBSetting"] = "1" },
+                    new Dictionary<string, string> { ["TempCopyDirectory"] = @"C:\\BackupCache\" }
+                },
+                ["FileSystemArchiveTestConfig"] = new List<Dictionary<string, string>>
+                {
+                    new Dictionary<string, string> { ["BaseBackupDir"] = @"\\Test\BackupArchive\" }
+                }
+            };
 
-        protected override IClientDBHandler ClientDBHandlerTemplate => new SqliteDBHandler();
+            this.configuration = GenerateConfiguration(configDef);
 
-        override protected ICloudBackupArchiveProvider CloudBackupArchiveProviderTemplate => new FileSystemBackupArchiveProvider();
+            var backupFileScanner = new BackupFileScanner(this.MockFileSystem, new Mock<ILogger<BackupFileScanner>>().Object);
+            var clientClientFileCacheHandler = new LocalClientFileCacheHandler(this.configuration, this.MockFileSystem, new Mock<ILogger<LocalClientFileCacheHandler>>().Object);
 
-        protected override IBackupRunControl BackupRunControlTemplate => new BackupRunControl();
+            this.cloudBackupArchiveProvider = new FileSystemBackupArchiveProvider(this.configuration, this.MockFileSystem, new Mock<ILogger<FileSystemBackupArchiveProvider>>().Object);
+            this.clientDBHandler = new SqliteDBHandler(configuration, new Mock<ILogger<SqliteDBHandler>>().Object);
 
-        protected override IClientFileCacheHandler ClientFileCacheHandlerTemplate => new LocalClientFileCacheHandler();
-
-        protected override IBackupFileScanner BackupFileScannerTemplate => new BackupFileScanner();
-
-        private IBackupRunControl BackupRunControl => this.ServiceProvider.GetService<IBackupRunControl>();
+            return new BackupRunControl(backupFileScanner,
+                                        this.clientDBHandler,
+                                        clientClientFileCacheHandler,
+                                        this.cloudBackupArchiveProvider,
+                                        this.configuration,
+                                        this.MockFileSystem,
+                                        new Mock<ILogger<BackupRunControl>>().Object);
+        }
     }
-
 }

@@ -10,41 +10,55 @@ using System.Threading.Tasks;
 namespace CloudBackupClient
 {
     public class BackupClient
-    {      
-        private readonly IServiceProvider serviceProvider;
+    {
+        
+        private readonly IClientDBHandler clientDBHandler;
 
-        public BackupClient(IServiceProvider serviceProvider)
+        private readonly IBackupRunControl backupRunControl;
+
+        private readonly IConfiguration configuration;
+
+        private readonly ILogger<BackupClient> logger;
+
+        public BackupClient(IClientDBHandler clientDBHandler,
+                            IBackupRunControl backupRunControl,
+                            IConfiguration configuration,
+                            ILogger<BackupClient> logger)
         {            
-            this.serviceProvider = serviceProvider;           
+            this.clientDBHandler = clientDBHandler;
+            this.backupRunControl = backupRunControl;
+            this.configuration = configuration;         
+            this.logger = logger;
         }
 
         public async Task Start()
         {
-            var clientId = this.serviceProvider.GetService<IConfigurationRoot>().GetSection(BackupClientConfigurationKeys.BackupSettings).GetSection(BackupClientConfigurationKeys.BackupClientID).Value;
+            var configSection = this.configuration.GetSection(BackupClientConfigurationKeys.BackupSettings);
+            var clientId = configSection[BackupClientConfigurationKeys.BackupClientID];
 
-            this.Logger.LogInformation($"Starting backup run at {DateTime.Now} for client ID {clientId}");
+            this.logger.LogInformation($"Starting backup run at {DateTime.Now} for client ID {clientId}");
                                     
             BackupRun backupRun = null;
 
             try
             {
-                backupRun = this.BackupRunControl.GetNextBackupRun();                
+                backupRun = this.backupRunControl.GetNextBackupRun();                
 
-                this.Logger.LogInformation($"Processing open backup run with ID: {backupRun.BackupRunID} for client ID {clientId}");
+                this.logger.LogInformation($"Processing open backup run with ID: {backupRun.BackupRunID} for client ID {clientId}");
 
-                await this.BackupRunControl.ArchiveBackupRunAsync(backupRun);
+                await this.backupRunControl.ArchiveBackupRunAsync(backupRun);
 
-                this.Logger.LogInformation($"Completed proccessing backup run with ID: {backupRun.BackupRunID} for client ID {clientId}");
+                this.logger.LogInformation($"Completed proccessing backup run with ID: {backupRun.BackupRunID} for client ID {clientId}");
             }
             catch (Exception ex)
             {
                 if (backupRun == null)
                 {
-                    this.Logger.LogError($"Couldn't complete processing due to error - {ex.Message} {ex.StackTrace}");
+                    this.logger.LogError($"Couldn't complete processing due to error - {ex.Message} {ex.StackTrace}");
                 }
                 else
                 {
-                    this.Logger.LogError($"Error in processing backup run with ID: {backupRun.BackupRunID} - error message: {ex.Message}  {ex.StackTrace}");
+                    this.logger.LogError($"Error in processing backup run with ID: {backupRun.BackupRunID} - error message: {ex.Message}  {ex.StackTrace}");
 
                     backupRun.BackupRunCompleted = true;
                     backupRun.BackupRunEnd = DateTime.Now;
@@ -53,15 +67,15 @@ namespace CloudBackupClient
 
                     try
                     {
-                        this.ClientDBHandler.UpdateBackupRun(backupRun);
+                        this.clientDBHandler.UpdateBackupRun(backupRun);
                     }
                     catch (Exception dbEx)
                     {
-                        this.Logger.LogError($"Couldn't save backup run exception: {dbEx.Message}");
+                        this.logger.LogError($"Couldn't save backup run exception: {dbEx.Message}");
 
                         if (dbEx.InnerException != null)
                         {
-                            this.Logger.LogError($"Inner exception: {dbEx.InnerException.Message} - {dbEx.InnerException.StackTrace}");
+                            this.logger.LogError($"Inner exception: {dbEx.InnerException.Message} - {dbEx.InnerException.StackTrace}");
                         }
 
                         throw;
@@ -70,21 +84,15 @@ namespace CloudBackupClient
 
                 if (ex.InnerException != null)
                 {
-                    this.Logger.LogError($"Inner exception: {ex.InnerException.Message} - {ex.InnerException.StackTrace}");
+                    this.logger.LogError($"Inner exception: {ex.InnerException.Message} - {ex.InnerException.StackTrace}");
                 }
 
                 throw;
             }
             finally
             {
-                this.ClientDBHandler.Dispose();
+                this.clientDBHandler.Dispose();
             }
         }
-
-        private IBackupRunControl BackupRunControl => this.serviceProvider.GetService<IBackupRunControl>();
-
-        private IClientDBHandler ClientDBHandler => this.serviceProvider.GetService<IClientDBHandler>();
-                
-        private ILogger Logger => this.serviceProvider.GetService<ILogger<Program>>();
     }
 }

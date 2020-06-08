@@ -1,7 +1,14 @@
 ﻿using CloudBackupClient.ClientFileCacheHandlers;
 using CloudBackupClient.Models;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Moq;
+using Serilog;
+using System;
+using System.Collections.Generic;
 using System.IO;
+using System.IO.Abstractions;
 using System.IO.Abstractions.TestingHelpers;
 using System.Linq;
 using Xunit;
@@ -10,12 +17,27 @@ namespace CloudBackupClient.Tests.UnitTests
 {
     public class LocalClientFileCacheHandlerTests : CloudBackupTestBase
     {       
-        override protected string ConfigurationJson => $"{{\"LocalClientFileCacheConfig\": {{ \"TempCopyDirectory\": \"\\\\TempBackup\", \"MaxCacheMB\": {this.MaxMBTestSize}}} }}";
+        //override protected string ConfigurationJson => $"{{\"LocalClientFileCacheConfig\": {{ \"TempCopyDirectory\": \"\\\\TempBackup\", \"MaxCacheMB\": {this.MaxMBTestSize}}} }}";
         
-        public LocalClientFileCacheHandlerTests()
-        {
-            BackupRun backupRun = this.CreateBackupRun();
+        private int MaxMBTestSize => 1;
 
+        private string TestLargeFileNameFormat => @"\CloudBackupSource\Dir2\file{0}.big";
+                
+        public LocalClientFileCacheHandlerTests()
+        {  
+        }
+
+        [Fact]
+        public void InitializeBackupRunTest()
+        {
+            BackupRun backupRun = this.CreateBackupRun(this.MockFileSystem);
+            
+            foreach (var fileRef in backupRun.BackupFileRefs)
+            {
+                this.MockFileSystem.AddFile(fileRef.FullFileName, fileRef.FullFileName);
+            }
+
+            //TODO move this
             backupRun.BackupFileRefs.Add(new BackupRunFileRef { FullFileName = string.Format(this.TestLargeFileNameFormat, "1") });
             backupRun.BackupFileRefs.Add(new BackupRunFileRef { FullFileName = string.Format(this.TestLargeFileNameFormat, "2") });
 
@@ -24,17 +46,11 @@ namespace CloudBackupClient.Tests.UnitTests
             {
                 ms.WriteByte((byte)0);
             }
-
             this.MockFileSystem.AddFile(string.Format(this.TestLargeFileNameFormat, "1"), new MockFileData(ms.ToArray()));
             this.MockFileSystem.AddFile(string.Format(this.TestLargeFileNameFormat, "2"), new MockFileData(ms.ToArray()));
-        }
 
-        [Fact]
-        public void InitializeBackupRunTest()
-        {
-            BackupRun backupRun = this.CreateBackupRun();
-
-            this.ClientFileCacheHandler.InitializeBackupRun(backupRun);
+            var clientFileCacheHandler = CreateTestLocalCacheHandler();
+            clientFileCacheHandler.InitializeBackupRun(backupRun);
 
             foreach(var fileRef in backupRun.BackupFileRefs)
             {
@@ -48,7 +64,7 @@ namespace CloudBackupClient.Tests.UnitTests
                 {
                     Assert.True(fileRef.CopiedToCache);
 
-                    var cacheFileName = ((LocalClientFileCacheHandler)this.ClientFileCacheHandler).GetCacheEntryForFileRef(fileRef, backupRun);
+                    var cacheFileName = ((LocalClientFileCacheHandler)clientFileCacheHandler).GetCacheEntryForFileRef(fileRef, backupRun);
                     Assert.True(this.MockFileSystem.FileInfo.FromFileName(cacheFileName).Exists);
                 }
             }
@@ -57,11 +73,17 @@ namespace CloudBackupClient.Tests.UnitTests
         [Fact]
         public void GetCacheStreamForItemTest()
         {            
-            var backupRun = this.CreateBackupRun();
+            var backupRun = this.CreateBackupRun(this.MockFileSystem);
 
-            this.ClientFileCacheHandler.InitializeBackupRun(backupRun);
+            foreach (var fileRef in backupRun.BackupFileRefs)
+            {
+                this.MockFileSystem.AddFile(fileRef.FullFileName, fileRef.FullFileName);
+            }
 
-            var backupRef = backupRun.BackupFileRefs.First<BackupRunFileRef>();
+            var clientFileCacheHandler = CreateTestLocalCacheHandler();
+            clientFileCacheHandler.InitializeBackupRun(backupRun);
+
+            var backupRef = backupRun.BackupFileRefs.First();
             var writeStream = new MemoryStream();
                                     
             using (var readStream = this.MockFileSystem.OpenRead(backupRef.FullFileName))
@@ -73,7 +95,7 @@ namespace CloudBackupClient.Tests.UnitTests
 
             writeStream = new MemoryStream();
 
-            using (var testStream = this.ClientFileCacheHandler.GetCacheStreamForItem(backupRef, backupRun))
+            using (var testStream = clientFileCacheHandler.GetCacheStreamForItem(backupRef, backupRun))
             {
                 writeStream.WriteByte((byte)testStream.ReadByte());    
             }
@@ -91,17 +113,23 @@ namespace CloudBackupClient.Tests.UnitTests
         [Fact]
         public void CompleteFileArchiveTest()
         {
-            InitializeBackupRunTest();
-
-            var backupRun = this.CreateBackupRun();
-
-            var backupRef = backupRun.BackupFileRefs.First<BackupRunFileRef>();
-
-            this.ClientFileCacheHandler.CompleteFileArchive(backupRef, backupRun);
+            BackupRun backupRun = this.CreateBackupRun(this.MockFileSystem);
 
             foreach (var fileRef in backupRun.BackupFileRefs)
             {
-                var cacheFileName = ((LocalClientFileCacheHandler)this.ClientFileCacheHandler).GetCacheEntryForFileRef(fileRef, backupRun);
+                this.MockFileSystem.AddFile(fileRef.FullFileName, fileRef.FullFileName);
+            }
+
+            var clientFileCacheHandler = CreateTestLocalCacheHandler();
+            clientFileCacheHandler.InitializeBackupRun(backupRun);
+
+            var backupRef = backupRun.BackupFileRefs.First();
+            
+            clientFileCacheHandler.CompleteFileArchive(backupRef, backupRun);
+
+            foreach (var fileRef in backupRun.BackupFileRefs)
+            {
+                var cacheFileName = ((LocalClientFileCacheHandler)clientFileCacheHandler).GetCacheEntryForFileRef(fileRef, backupRun);
 
                 if (
                     fileRef.FullFileName.Equals(backupRef.FullFileName) ||
@@ -117,17 +145,18 @@ namespace CloudBackupClient.Tests.UnitTests
             }
         }
 
-        override public void Dispose()
+        private IClientFileCacheHandler CreateTestLocalCacheHandler()
         {
-            this.ClientFileCacheHandler.Dispose();
+            var config = new Dictionary<string, List<Dictionary<string, string>>>
+            {
+                ["LocalClientFileCacheConfig"] = new List<Dictionary<string, string>>
+                {
+                    new Dictionary<string, string> { ["MaxCacheMBSetting"] = "1" },
+                    new Dictionary<string, string> { ["TempCopyDirectory"] = @"C:\\BackupCache\" }
+                }
+            };
+
+            return new LocalClientFileCacheHandler(GenerateConfiguration(config), this.MockFileSystem, new Mock<ILogger<LocalClientFileCacheHandler>>().Object);
         }
-
-        private int MaxMBTestSize => 1;
-
-        private string TestLargeFileNameFormat => @"\CloudBackupSource\Dir2\file{0}.big";
-
-        protected override IClientFileCacheHandler ClientFileCacheHandlerTemplate => new LocalClientFileCacheHandler();
-
-        private IClientFileCacheHandler ClientFileCacheHandler => this.ServiceProvider.GetService<IClientFileCacheHandler>();
     }
 }

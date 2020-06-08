@@ -1,9 +1,10 @@
 ﻿using CloudBackupClient.Models;
+using System;
 using System.Collections.Generic;
 
 namespace CloudBackupClient.ClientDBHandlers
 {
-    public interface IClientDBHandler : ICloudBackupService
+    public interface IClientDBHandler : IDisposable
     {
         
         BackupRun GetBackupRun(int backupRunID);

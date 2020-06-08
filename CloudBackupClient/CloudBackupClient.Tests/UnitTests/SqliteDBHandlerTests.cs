@@ -1,30 +1,31 @@
 ﻿using CloudBackupClient.ClientDBHandlers;
 using CloudBackupClient.Models;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Moq;
 using System;
 using System.Collections.Generic;
+using System.IO.Abstractions.TestingHelpers;
 using System.Linq;
 using Xunit;
 
 namespace CloudBackupClient.Tests.UnitTests
 {
     public class SqliteDBHandlerTests : CloudBackupTestBase
-    {
-        protected override string ConfigurationJson => "{\"ConnectionStrings\": { \"SqliteConnString\": \"Data Source=:memory:\"} }";
-
+    {        
         public SqliteDBHandlerTests()
         {
-
         }
-                
+
         [Fact]
         public void AddBackupRunById()
-        {            
+        {
+            var clientDbHandler = CreateTestDBHandler();
             var backupRun = this.CreateBackupRun();
 
-            ClientDBHandler.AddBackupRun(backupRun);
+            clientDbHandler.AddBackupRun(backupRun);
                         
-            var requestedBackupRun = ClientDBHandler.GetBackupRun(backupRun.BackupRunID);
+            var requestedBackupRun = clientDbHandler.GetBackupRun(backupRun.BackupRunID);
 
             Assert.NotNull(requestedBackupRun);            
             Assert.Equal(backupRun.BackupRunID, requestedBackupRun.BackupRunID);
@@ -38,8 +39,9 @@ namespace CloudBackupClient.Tests.UnitTests
 
         [Fact]
         public void GetBackupRunByIdNotFound()
-        {            
-            var requestedBackupRun = ClientDBHandler.GetBackupRun(1001);
+        {
+            var clientDbHandler = CreateTestDBHandler();
+            var requestedBackupRun = clientDbHandler.GetBackupRun(1001);
 
             Assert.Null(requestedBackupRun);            
         }
@@ -50,9 +52,10 @@ namespace CloudBackupClient.Tests.UnitTests
         public void GetOpenBackupRunTest(bool isException)
         {
             // Given
+            var clientDbHandler = CreateTestDBHandler();
             var completedBackupRun = this.CreateBackupRun();
 
-            this.ClientDBHandler.AddBackupRun(completedBackupRun);
+            clientDbHandler.AddBackupRun(completedBackupRun);
 
             completedBackupRun.BackupRunStart = DateTime.Now.AddSeconds(-1);
             completedBackupRun.BackupRunCompleted = true;
@@ -64,14 +67,14 @@ namespace CloudBackupClient.Tests.UnitTests
                 completedBackupRun.ExceptionMessage = "Exception happened";
             }
 
-            this.ClientDBHandler.UpdateBackupRun(completedBackupRun);            
+            clientDbHandler.UpdateBackupRun(completedBackupRun);            
 
             var openBackupRun = this.CreateBackupRun();
 
-            this.ClientDBHandler.AddBackupRun(openBackupRun);
+            clientDbHandler.AddBackupRun(openBackupRun);
 
             // When
-            IList<BackupRun> lstBrs = ClientDBHandler.GetOpenBackupRuns();
+            IList<BackupRun> lstBrs = clientDbHandler.GetOpenBackupRuns();
                         
             // Then
             Assert.NotNull(lstBrs);
@@ -82,9 +85,10 @@ namespace CloudBackupClient.Tests.UnitTests
         [Fact]
         public void UpdateBackupRun()
         {
+            var clientDbHandler = CreateTestDBHandler();
             var backupRun = this.CreateBackupRun();
 
-            ClientDBHandler.AddBackupRun(backupRun);
+            clientDbHandler.AddBackupRun(backupRun);
 
             BackupRunFileRef newFileRef = new BackupRunFileRef
             {
@@ -103,9 +107,9 @@ namespace CloudBackupClient.Tests.UnitTests
 
             backupRun.BackupRunCompleted = true;
 
-            ClientDBHandler.UpdateBackupRun(backupRun);
+            clientDbHandler.UpdateBackupRun(backupRun);
 
-            var updatedBackupRun = ClientDBHandler.GetBackupRun(backupRun.BackupRunID);
+            var updatedBackupRun = clientDbHandler.GetBackupRun(backupRun.BackupRunID);
 
             Assert.Equal(backupRefFileCount, updatedBackupRun.BackupFileRefs.Count);
             Assert.True(updatedBackupRun.BackupRunCompleted);
@@ -118,32 +122,36 @@ namespace CloudBackupClient.Tests.UnitTests
         [Fact]
         public void UpdateBackupRunFileRefs()
         {
+            var clientDbHandler = CreateTestDBHandler();
             var backupRun = this.CreateBackupRun();
 
-            ClientDBHandler.AddBackupRun(backupRun);
+            clientDbHandler.AddBackupRun(backupRun);
 
             var fileRef = backupRun.BackupFileRefs[0];
 
             fileRef.CopiedToCache = true;
             fileRef.CopiedToArchive = true;
 
-            ClientDBHandler.UpdateBackupFileRef(fileRef);
+            clientDbHandler.UpdateBackupFileRef(fileRef);
             
-            var updatedBackupRun = ClientDBHandler.GetBackupRun(backupRun.BackupRunID);
+            var updatedBackupRun = clientDbHandler.GetBackupRun(backupRun.BackupRunID);
 
             Assert.True(updatedBackupRun.BackupFileRefs[0].CopiedToCache);
             Assert.True(updatedBackupRun.BackupFileRefs[0].CopiedToArchive);            
         }
 
-        override public void Dispose()
+        private IClientDBHandler CreateTestDBHandler()
         {
-            this.ClientDBHandler.Dispose();
+            var config = new Dictionary<string, List<Dictionary<string, string>>>
+            {
+                ["ConnectionStrings"] = new List<Dictionary<string, string>>
+                {
+                    new Dictionary<string, string> { ["SqliteConnString"] = "Data Source=:memory:" }
+                }
+            };
+
+            return new SqliteDBHandler(this.GenerateConfiguration(config), new Mock<ILogger<SqliteDBHandler>>().Object); ;
         }
 
-        override protected IClientDBHandler ClientDBHandlerTemplate => new SqliteDBHandler();
-
-        private IClientDBHandler ClientDBHandler => this.ServiceProvider.GetService<IClientDBHandler>();
     }
-
-
 }
